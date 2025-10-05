@@ -72,7 +72,12 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
         guard !videoCodecBlackList.contains(info.codecs) else { return }
         let subtitlePlaceHolder = hasSubtitle ? ",SUBTITLES=\"subs\"" : ""
-        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn
+        // 杜比视界识别优化:使用双重判断机制(ID + 编解码器)
+        // ID判断:126(标准杜比视界) + 127(8K杜比视界)
+        let isDolbyByID = info.id == 126 || info.id == 127
+        // 编解码器判断:dvh1(HEVC) 或 dvhe(HEVC)作为后备识别方案
+        let isDolbyByCodec = info.codecs.hasPrefix("dvh1.") || info.codecs.hasPrefix("dvhe.")
+        let isDolby = isDolbyByID || isDolbyByCodec
         let isHDR10 = info.id == 125
         // hdr 10 formate exp: hev1.2.4.L156.90
         //  Codec.Profile.Flags.TierLevel.Constraints
