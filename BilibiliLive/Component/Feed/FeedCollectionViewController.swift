@@ -110,11 +110,16 @@ class FeedCollectionViewController: UIViewController {
             // Principle_Applied: SOLID - 单一职责，将快照应用逻辑分离到专门方法
             // Optimization: 延迟应用机制提高稳定性
             // }}
+            Logger.debug("[FeedCollection] _displayData didSet triggered, count: \(_displayData.count), isViewLoaded: \(isViewLoaded)")
             applySnapshotSafely()
         }
     }
 
     private var isLoading = false
+    // Performance Optimization: Track if snapshot is being applied to prevent recursive calls
+    private var isApplyingSnapshot = false
+    // Track if snapshot needs to be reapplied after current application completes
+    private var needsReapply = false
 
     typealias DisplayCellRegistration = UICollectionView.CellRegistration<FeedCollectionViewCell, AnyDispplayData>
     private lazy var dataSource = makeDataSource()
@@ -137,7 +142,9 @@ class FeedCollectionViewController: UIViewController {
         // Reason: 使用新的AnyDispplayData初始化方法
         // Principle_Applied: 保持接口一致性
         // }}
-        _displayData.append(contentsOf: displayData.map { AnyDispplayData(data: $0) }.filter({ !_displayData.contains($0) }))
+        let newItems = displayData.map { AnyDispplayData(data: $0) }.filter { !_displayData.contains($0) }
+        Logger.debug("[FeedCollection] appendData called with \(displayData.count) items, after filtering: \(newItems.count) items, current total: \(_displayData.count)")
+        _displayData.append(contentsOf: newItems)
         if displayData.count < pageSize - 5 || displayData.count == 0 {
             finished = true
             return
@@ -163,34 +170,53 @@ class FeedCollectionViewController: UIViewController {
     // MARK: - Private
 
     // {{CHENGQI:
-    // Action: Added
-    // Timestamp: 2025-06-09 11:11:21 +08:00
-    // Reason: 添加安全的快照应用方法，确保collection view完全准备就绪
-    // Principle_Applied: KISS - 简单的状态检查逻辑
-    // Optimization: 避免在collection view未就绪时应用快照
-    // Architectural_Note (AR): 增强错误处理和tvOS兼容性
+    // Action: Modified
+    // Timestamp: 2025-10-05 18:15:00 +08:00
+    // Reason: 修复快照应用逻辑，移除过于严格的 superview 检查，改用 isViewLoaded 检查
+    // Principle_Applied: KISS - 简化状态检查逻辑，让 UIKit 处理视图生命周期
+    // Optimization: 根据性能等级决定是否使用动画
+    // Architectural_Note (AR): 修复非"关注"栏目无视频卡片显示的问题
+    // Bug_Fix: superview 检查在某些情况下会失败，导致快照永远无法应用
     // }}
     private func applySnapshotSafely() {
-        // 检查collection view是否已经初始化且在视图层级中
-        guard let collectionView = collectionView,
-              collectionView.superview != nil
-        else {
-            // 延迟到下一个运行循环，确保UI完全就绪
+        // Performance Optimization: Prevent excessive recursive calls
+        guard !isApplyingSnapshot else {
+            Logger.debug("[FeedCollection] applySnapshotSafely skipped - already applying, marking for reapply")
+            needsReapply = true
+            return
+        }
+
+        // 检查视图是否已加载 - 更可靠的检查方式
+        guard isViewLoaded else {
+            Logger.debug("[FeedCollection] applySnapshotSafely deferred - view not loaded yet")
+            // 视图未加载时，延迟到下一个 runloop
             DispatchQueue.main.async { [weak self] in
                 self?.applySnapshotSafely()
             }
             return
         }
 
+        needsReapply = false
+        Logger.debug("[FeedCollection] Applying snapshot with \(_displayData.count) items")
+        isApplyingSnapshot = true
+
         var snapshot = NSDiffableDataSourceSnapshot<Section, AnyDispplayData>()
         snapshot.appendSections(Section.allCases)
         snapshot.appendItems(_displayData, toSection: .main)
 
-        // 使用动画应用快照，并提供完成回调
-        dataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
-            // 快照应用完成后的处理
-            if let self = self {
-                Logger.debug("数据源快照已安全应用，当前项目数：\(self._displayData.count)")
+        // Performance Optimization: Disable animations on low performance
+        let shouldAnimate = BLPremiumPerformanceMonitor.shared.currentQualityLevel >= .medium
+
+        // 应用快照
+        dataSource.apply(snapshot, animatingDifferences: shouldAnimate) { [weak self] in
+            guard let self = self else { return }
+            self.isApplyingSnapshot = false
+            Logger.debug("[FeedCollection] Snapshot applied successfully with \(self._displayData.count) items, animated: \(shouldAnimate)")
+
+            // If data changed while we were applying, reapply
+            if self.needsReapply {
+                Logger.debug("[FeedCollection] Reapplying snapshot due to data change during application")
+                self.applySnapshotSafely()
             }
         }
     }
@@ -244,13 +270,13 @@ class FeedCollectionViewController: UIViewController {
         let dataSource = UICollectionViewDiffableDataSource<Section, AnyDispplayData>(collectionView: collectionView, cellProvider: makeCellRegistration().cellProvider)
 
         let supplementaryRegistration = UICollectionView.SupplementaryRegistration<TitleSupplementaryView>(elementKind: TitleSupplementaryView.reuseIdentifier) {
-            [weak self] supplementaryView, string, indexPath in
+            [weak self] supplementaryView, _, _ in
             guard let self else { return }
             supplementaryView.label.text = self.headerText
         }
 
-        dataSource.supplementaryViewProvider = { view, kind, index in
-            return self.collectionView.dequeueConfiguredReusableSupplementary(
+        dataSource.supplementaryViewProvider = { _, _, index in
+            self.collectionView.dequeueConfiguredReusableSupplementary(
                 using: supplementaryRegistration, for: index
             )
         }
@@ -259,7 +285,7 @@ class FeedCollectionViewController: UIViewController {
     }
 
     private func makeCellRegistration() -> DisplayCellRegistration {
-        DisplayCellRegistration { [weak self] cell, indexPath, displayData in
+        DisplayCellRegistration { [weak self] cell, _, displayData in
             cell.styleOverride = self?.styleOverride
             cell.setup(data: displayData.data)
             cell.onLongPress = {
@@ -270,18 +296,18 @@ class FeedCollectionViewController: UIViewController {
 }
 
 extension FeedCollectionViewController: UICollectionViewDelegate {
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+    func collectionView(_: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if let data = dataSource.itemIdentifier(for: indexPath) {
             didSelect?(data.data)
         }
     }
 
-    func indexPathForPreferredFocusedView(in collectionView: UICollectionView) -> IndexPath? {
+    func indexPathForPreferredFocusedView(in _: UICollectionView) -> IndexPath? {
         let indexPath = IndexPath(item: 0, section: 0)
         return indexPath
     }
 
-    func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+    func collectionView(_: UICollectionView, willDisplay _: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         guard _displayData.count > 0 else { return }
         guard indexPath.row == _displayData.count - 1, !isLoading, !finished else {
             return
