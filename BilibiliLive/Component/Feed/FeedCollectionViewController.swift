@@ -265,25 +265,18 @@ class FeedCollectionViewController: UIViewController {
         // }}
         snapshot.reconfigureItems(unchangedItems)
 
+        // {{CHENGQI:
+        // Action: Modified
+        // Timestamp: 2025-10-06 07:35:00 +08:00
+        // Reason: 修复 BSActionErrorDomain response-not-possible 错误
+        // Principle_Applied: UIKit Thread Safety - dataSource.apply() 必须在主线程外部调用
+        // Optimization: 移除 UIView.animate 包裹，让 apply() 自己处理动画
+        // }}
         // 性能适配动画
         let shouldAnimate = BLPremiumPerformanceMonitor.shared.currentQualityLevel >= .medium
 
-        // {{CHENGQI:
-        // Action: Added
-        // Timestamp: 2025-10-06 06:35:00 +08:00
-        // Reason: tvOS 26 使用 flushUpdates 简化布局传递，提升动画流畅度
-        // Principle_Applied: API Adoption - 利用 tvOS 26 UIView.AnimationOptions.flushUpdates
-        // Optimization: 减少布局传递延迟，改善滚动体验
-        // }}
-        if #available(tvOS 18.0, *) {
-            // tvOS 26: 使用 flushUpdates 优化布局
-            UIView.animate(withDuration: 0.3, delay: 0, options: [.allowUserInteraction]) {
-                self.dataSource.apply(snapshot, animatingDifferences: shouldAnimate)
-            }
-        } else {
-            // tvOS 18.1: 传统方式（向后兼容）
-            dataSource.apply(snapshot, animatingDifferences: shouldAnimate)
-        }
+        // 应用快照（不能在 UIView.animate 块内调用）
+        dataSource.apply(snapshot, animatingDifferences: shouldAnimate)
 
         Logger.debug("[FeedCollection] Incremental snapshot applied: +\(newItems.count) -\(removedItems.count) ~\(unchangedItems.count)")
     }
