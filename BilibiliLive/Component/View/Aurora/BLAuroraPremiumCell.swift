@@ -244,6 +244,17 @@ class BLAuroraPremiumCell: BLMotionCollectionViewCell {
     deinit {
         cleanupAuroraComponents()
     }
+
+    // MARK: - Cell Reuse Override
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+
+        // Ensure Aurora components don't interfere with content visibility
+        // Alpha should always be 1.0 for content visibility
+        contentView.alpha = 1.0
+        alpha = 1.0
+    }
 }
 
 // MARK: - Default Implementations (临时基础实现)

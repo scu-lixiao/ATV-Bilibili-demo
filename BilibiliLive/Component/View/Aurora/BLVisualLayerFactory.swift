@@ -789,9 +789,9 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
     // MARK: - Properties
 
     // Premium 2025: Triple-layer glassmorphism system
-    private var baseBlurView: UIVisualEffectView?        // Bottom layer - .thick material
-    private var midBlurView: UIVisualEffectView?         // Middle layer - .regular blur
-    private var vibrancyEffectView: UIVisualEffectView?  // Top layer - vibrancy for highlights
+    private var baseBlurView: UIVisualEffectView? // Bottom layer - .thick material
+    private var midBlurView: UIVisualEffectView? // Middle layer - .regular blur
+    private var vibrancyEffectView: UIVisualEffectView? // Top layer - vibrancy for highlights
 
     private var contentMaskLayer: CALayer?
     private var edgeEnhancementLayer: CAGradientLayer?
@@ -867,10 +867,13 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
         midBlurView.alpha = 0.0
 
         containerView.addSubview(midBlurView)
+        // Fix: Ensure blur view doesn't obscure content
+        containerView.sendSubviewToBack(midBlurView)
 
-        // Layer 3 (Top): Vibrancy effect for highlights and depth perception
-        let vibrancyEffect = UIVibrancyEffect(blurEffect: midBlurEffect, style: .fill)
-        vibrancyEffectView = UIVisualEffectView(effect: vibrancyEffect)
+        // Layer 3 (Top): Additional subtle blur for highlights and depth perception
+        // Note: UIVibrancyEffect is not available on tvOS, using a light blur instead
+        let topBlurEffect = UIBlurEffect(style: .light)
+        vibrancyEffectView = UIVisualEffectView(effect: topBlurEffect)
         guard let vibrancyEffectView = vibrancyEffectView else { return }
 
         vibrancyEffectView.frame = containerView.bounds
@@ -884,6 +887,8 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
         vibrancyEffectView.contentView.addSubview(highlightView)
 
         containerView.addSubview(vibrancyEffectView)
+        // Fix: Ensure vibrancy view doesn't obscure content
+        containerView.sendSubviewToBack(vibrancyEffectView)
     }
 
     private func createContentMaskLayer() {
@@ -1071,15 +1076,15 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
 
         // Animate blur intensity with staggered layers for depth
         UIView.animate(withDuration: intensityAnimationDuration, delay: 0, options: [.curveEaseInOut]) {
-            baseBlurView.alpha = targetAlpha * 0.7  // Base layer at 70%
+            baseBlurView.alpha = targetAlpha * 0.7 // Base layer at 70%
         }
 
         UIView.animate(withDuration: intensityAnimationDuration, delay: 0.05, options: [.curveEaseInOut]) {
-            midBlurView.alpha = targetAlpha * 0.85  // Mid layer at 85%
+            midBlurView.alpha = targetAlpha * 0.85 // Mid layer at 85%
         }
 
         UIView.animate(withDuration: intensityAnimationDuration, delay: 0.1, options: [.curveEaseInOut]) {
-            vibrancyEffectView.alpha = targetAlpha * 0.4  // Vibrancy highlights at 40%
+            vibrancyEffectView.alpha = targetAlpha * 0.4 // Vibrancy highlights at 40%
         }
 
         // Update other layers
@@ -1202,7 +1207,7 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
 
         // Update blur with adaptive intensity
         UIView.animate(withDuration: 0.8, delay: 0, options: [.curveEaseInOut]) {
-            self.blurEffectView?.alpha = adaptiveIntensity * self.currentConfiguration.intensity
+            self.midBlurView?.alpha = adaptiveIntensity * self.currentConfiguration.intensity
         }
 
         // Update edge enhancement based on contrast
@@ -1371,7 +1376,9 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
 
         let bounds = containerView.bounds
 
-        blurEffectView?.frame = bounds
+        baseBlurView?.frame = bounds
+        midBlurView?.frame = bounds
+        vibrancyEffectView?.frame = bounds
         contentMaskLayer?.frame = bounds
         edgeEnhancementLayer?.frame = bounds
         adaptiveBlurLayer?.frame = bounds
@@ -1393,8 +1400,8 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
     // Lighting configuration
     private var lightingIntensity: CGFloat = 0.6
-    private var particleCount: Float = 150  // Premium 2025: Increased from 50 to 150
-    private var glowRadius: CGFloat = 35.0  // Premium 2025: Increased from 20 to 35
+    private var particleCount: Float = 150 // Premium 2025: Increased from 50 to 150
+    private var glowRadius: CGFloat = 35.0 // Premium 2025: Increased from 20 to 35
     private var sparkleEnabled: Bool = true
     private var focusRingEnabled: Bool = true
 
@@ -1404,7 +1411,7 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
     // Animation properties
     private var particleAnimationDuration: TimeInterval = 3.0
-    private var glowAnimationDuration: TimeInterval = 2.5  // Slightly slower for smoother feel
+    private var glowAnimationDuration: TimeInterval = 2.5 // Slightly slower for smoother feel
     private var sparkleAnimationDuration: TimeInterval = 1.8
 
     // Color themes for lighting
@@ -1483,13 +1490,13 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
         // Deep, rich radial glow colors
         radialGlowLayer.colors = [
-            UIColor(red: 1.0, green: 0.85, blue: 0.5, alpha: 0.6).cgColor,   // Warm center
-            UIColor(red: 0.9, green: 0.7, blue: 0.3, alpha: 0.3).cgColor,    // Mid transition
-            UIColor.clear.cgColor,                                            // Fade to transparent
+            UIColor(red: 1.0, green: 0.85, blue: 0.5, alpha: 0.6).cgColor, // Warm center
+            UIColor(red: 0.9, green: 0.7, blue: 0.3, alpha: 0.3).cgColor, // Mid transition
+            UIColor.clear.cgColor, // Fade to transparent
         ]
         radialGlowLayer.locations = [0.0, 0.5, 1.0]
         radialGlowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
-        radialGlowLayer.endPoint = CGPoint(x: 1.2, y: 1.2)  // Extend beyond bounds
+        radialGlowLayer.endPoint = CGPoint(x: 1.2, y: 1.2) // Extend beyond bounds
         radialGlowLayer.opacity = 0.0
 
         mainLayer.insertSublayer(radialGlowLayer, at: 0)
@@ -2282,14 +2289,14 @@ class BLInteractionFeedbackLayer: BLBaseVisualLayer {
     // MARK: - Properties
 
     // Premium 2025: Micro-interaction layers
-    private var hoverAnticipationLayer: CALayer?      // Pre-focus subtle animation
-    private var rippleEffectLayer: CAShapeLayer?      // Touch/focus ripple effect
-    private var pulseIndicatorLayer: CALayer?         // Status pulse indicator
+    private var hoverAnticipationLayer: CALayer? // Pre-focus subtle animation
+    private var rippleEffectLayer: CAShapeLayer? // Touch/focus ripple effect
+    private var pulseIndicatorLayer: CALayer? // Status pulse indicator
 
     // Interaction configuration
     private var isHoverAnticipationEnabled: Bool = true
     private var rippleIntensity: CGFloat = 0.7
-    private var anticipationDelay: TimeInterval = 0.1  // 100ms before actual focus
+    private var anticipationDelay: TimeInterval = 0.1 // 100ms before actual focus
 
     // Animation properties
     private var anticipationAnimator: UIViewPropertyAnimator?
@@ -2526,7 +2533,7 @@ class BLInteractionFeedbackLayer: BLBaseVisualLayer {
         let properties = currentConfiguration.properties
 
         // Update interaction parameters
-        rippleIntensity = 0.5 + (0.4 * intensity)  // 0.5 to 0.9
+        rippleIntensity = 0.5 + (0.4 * intensity) // 0.5 to 0.9
         isHoverAnticipationEnabled = properties["hoverAnticipation"] as? Bool ?? true
 
         // Update animation durations

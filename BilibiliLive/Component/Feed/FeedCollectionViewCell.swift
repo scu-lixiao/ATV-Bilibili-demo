@@ -135,6 +135,14 @@ class FeedCollectionViewCell: BLAuroraPremiumCell {
         onLongPress = nil
         avatarView.image = nil
         stopScroll()
+
+        // Fix: Reset all visual states to prevent gray-out
+        contentView.alpha = 1.0
+        alpha = 1.0
+        imageView.alpha = 1.0
+        titleLabel.alpha = 1.0
+        upLabel.alpha = 1.0
+        avatarView.alpha = 1.0
     }
 }
 
