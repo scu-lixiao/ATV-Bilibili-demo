@@ -169,3 +169,10 @@ cache/
 UserData/
 user_data/
 *.user
+
+# MCP (Model Context Protocol) Configuration
+.mcp.json
+mcp.json
+mcp-config.json
+.mcp/
+mcp_servers/

@@ -62,6 +62,25 @@ This file contains Bilibili API credentials and has been:
 2. ✅ Added to `.gitignore` via `**/Keys.swift` pattern
 3. ✅ Local copy preserved for development
 
+### ⚠️ `.mcp.json`
+
+**STATUS**: ❌ Previously tracked by git (FIXED)
+
+This file contains MCP (Model Context Protocol) server configurations and API keys:
+1. ✅ Removed from git tracking with `git rm --cached`
+2. ✅ Added to `.gitignore` and pre-commit hook
+3. ✅ Local copy preserved for development
+4. ✅ Template created at `.mcp.json.example`
+
+**Setup MCP Configuration**:
+```bash
+# Copy template
+cp .mcp.json.example .mcp.json
+
+# Edit with your actual API keys
+vim .mcp.json
+```
+
 **What happened**:
 ```bash
 # Keys.swift was removed from git index but kept locally
