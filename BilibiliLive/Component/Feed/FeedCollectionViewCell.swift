@@ -10,7 +10,7 @@ import MarqueeLabel
 import TVUIKit
 import UIKit
 
-class FeedCollectionViewCell: BLMotionCollectionViewCell {
+class FeedCollectionViewCell: BLAuroraPremiumCell {
     var onLongPress: (() -> Void)?
     var styleOverride: FeedDisplayStyle? { didSet { if oldValue != styleOverride { updateStyle() } }}
 
@@ -20,8 +20,8 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
     private let infoView = UIView()
     private let avatarView = UIImageView()
 
-    override func setup() {
-        super.setup()
+    override func setupCell() {
+        super.setupCell()
         let longpress = UILongPressGestureRecognizer(target: self, action: #selector(actionLongPress(sender:)))
         addGestureRecognizer(longpress)
 

@@ -1,0 +1,379 @@
+name: Aurora Premium Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * *'  # 每日凌晨2点运行
+
+env:
+  XCODE_VERSION: '15.0'
+  IOS_SIMULATOR: 'AppleTV 4K (3rd generation)'
+  TVOS_VERSION: '17.0'
+
+jobs:
+  integration-tests:
+    name: Aurora Premium Integration Tests
+    runs-on: macos-latest
+    timeout-minutes: 60
+    
+    strategy:
+      matrix:
+        device: ['AppleTV 4K (3rd generation)', 'AppleTV HD']
+        quality: ['low', 'medium', 'high', 'ultra']
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+      
+      - name: Cache Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+      
+      - name: Install Dependencies
+        run: |
+          if [ -f "Podfile" ]; then
+            pod install --repo-update
+          fi
+      
+      - name: Create Test Simulator
+        run: |
+          xcrun simctl create "AuroraPremiumTest" "Apple TV 4K (3rd generation)" "tvOS17.0"
+          xcrun simctl boot "AuroraPremiumTest"
+      
+      # Phase 1: 系统集成测试
+      - name: Run System Integration Tests
+        run: |
+          echo "🔧 Running Aurora Premium System Integration Tests..."
+          xcodebuild test \
+            -workspace AuroraPremium.xcworkspace \
+            -scheme AuroraPremium \
+            -sdk appletvsimulator \
+            -destination "platform=tvOS Simulator,name=AuroraPremiumTest" \
+            -testPlan SystemIntegrationTests \
+            -resultBundlePath TestResults/SystemIntegration.xcresult \
+            -derivedDataPath DerivedData
+      
+      # Phase 2: 功能集成测试
+      - name: Run Functional Integration Tests
+        run: |
+          echo "⚡ Running Aurora Premium Functional Integration Tests..."
+          xcodebuild test \
+            -workspace AuroraPremium.xcworkspace \
+            -scheme AuroraPremium \
+            -sdk appletvsimulator \
+            -destination "platform=tvOS Simulator,name=AuroraPremiumTest" \
+            -testPlan FunctionalIntegrationTests \
+            -resultBundlePath TestResults/FunctionalIntegration.xcresult \
+            -derivedDataPath DerivedData
+      
+      # Phase 3: 性能集成测试
+      - name: Run Performance Integration Tests
+        run: |
+          echo "📊 Running Aurora Premium Performance Integration Tests..."
+          xcodebuild test \
+            -workspace AuroraPremium.xcworkspace \
+            -scheme AuroraPremium \
+            -sdk appletvsimulator \
+            -destination "platform=tvOS Simulator,name=AuroraPremiumTest" \
+            -testPlan PerformanceIntegrationTests \
+            -resultBundlePath TestResults/PerformanceIntegration.xcresult \
+            -derivedDataPath DerivedData
+          
+      # Phase 4: 端到端工作流测试
+      - name: Run End-to-End Workflow Tests
+        run: |
+          echo "🔄 Running Aurora Premium End-to-End Workflow Tests..."
+          xcodebuild test \
+            -workspace AuroraPremium.xcworkspace \
+            -scheme AuroraPremium \
+            -sdk appletvsimulator \
+            -destination "platform=tvOS Simulator,name=AuroraPremiumTest" \
+            -testPlan EndToEndWorkflowTests \
+            -resultBundlePath TestResults/EndToEndWorkflow.xcresult \
+            -derivedDataPath DerivedData \
+            -test-arg quality=${{ matrix.quality }}
+      
+      # Phase 5: 质量等级特定测试
+      - name: Run Quality Level Specific Tests
+        run: |
+          echo "🎯 Running Quality Level ${{ matrix.quality }} Tests..."
+          xcodebuild test \
+            -workspace AuroraPremium.xcworkspace \
+            -scheme AuroraPremium \
+            -sdk appletvsimulator \
+            -destination "platform=tvOS Simulator,name=AuroraPremiumTest" \
+            -testPlan QualityLevelTests \
+            -resultBundlePath TestResults/QualityLevel_${{ matrix.quality }}.xcresult \
+            -derivedDataPath DerivedData \
+            -test-arg quality=${{ matrix.quality }}
+      
+      # 分析测试结果
+      - name: Analyze Test Results
+        run: |
+          echo "📋 Analyzing Aurora Premium Integration Test Results..."
+          
+          # 提取测试结果
+          xcrun xcresulttool get --format json \
+            --path TestResults/SystemIntegration.xcresult > system_results.json
+          
+          xcrun xcresulttool get --format json \
+            --path TestResults/FunctionalIntegration.xcresult > functional_results.json
+          
+          xcrun xcresulttool get --format json \
+            --path TestResults/PerformanceIntegration.xcresult > performance_results.json
+          
+          xcrun xcresulttool get --format json \
+            --path TestResults/EndToEndWorkflow.xcresult > e2e_results.json
+          
+          # 生成集成报告
+          python3 Scripts/generate_integration_report.py \
+            --system system_results.json \
+            --functional functional_results.json \
+            --performance performance_results.json \
+            --e2e e2e_results.json \
+            --quality ${{ matrix.quality }} \
+            --device "${{ matrix.device }}" \
+            --output integration_report.html
+      
+      # 性能回归检测
+      - name: Performance Regression Detection
+        run: |
+          echo "🔍 Checking for Performance Regressions..."
+          
+          # 提取性能指标
+          python3 Scripts/extract_performance_metrics.py \
+            --input TestResults/PerformanceIntegration.xcresult \
+            --output performance_metrics.json
+          
+          # 对比基准性能
+          if [ -f "baseline_performance.json" ]; then
+            python3 Scripts/compare_performance.py \
+              --baseline baseline_performance.json \
+              --current performance_metrics.json \
+              --threshold 0.05 \
+              --output regression_report.json
+          fi
+      
+      # 内存泄漏检测
+      - name: Memory Leak Detection
+        run: |
+          echo "🧠 Running Memory Leak Detection..."
+          
+          # 使用Instruments进行内存分析
+          xcrun xctrace record \
+            --template "Leaks" \
+            --target-device "AuroraPremiumTest" \
+            --launch "com.bl.aurora.premium" \
+            --output LeaksTrace.trace \
+            --time-limit 30s
+          
+          # 分析内存泄漏
+          xcrun xctrace export \
+            --input LeaksTrace.trace \
+            --output-format table \
+            > memory_leaks.txt
+      
+      # 集成质量评估
+      - name: Integration Quality Assessment
+        run: |
+          echo "🎯 Aurora Premium Integration Quality Assessment..."
+          
+          # 计算综合质量分数
+          python3 Scripts/calculate_quality_score.py \
+            --system-results system_results.json \
+            --functional-results functional_results.json \
+            --performance-results performance_results.json \
+            --e2e-results e2e_results.json \
+            --memory-analysis memory_leaks.txt \
+            --output quality_score.json
+          
+          # 检查质量门禁
+          quality_score=$(cat quality_score.json | jq '.overallScore')
+          echo "Overall Quality Score: $quality_score"
+          
+          if (( $(echo "$quality_score < 0.8" | bc -l) )); then
+            echo "❌ Quality score below threshold (0.8). Current: $quality_score"
+            exit 1
+          else
+            echo "✅ Quality score meets threshold. Current: $quality_score"
+          fi
+      
+      # 上传测试工件
+      - name: Upload Test Artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-results-${{ matrix.device }}-${{ matrix.quality }}
+          path: |
+            TestResults/
+            integration_report.html
+            performance_metrics.json
+            regression_report.json
+            memory_leaks.txt
+            quality_score.json
+          retention-days: 30
+      
+      # 清理测试环境
+      - name: Cleanup Test Environment
+        if: always()
+        run: |
+          xcrun simctl shutdown "AuroraPremiumTest"
+          xcrun simctl delete "AuroraPremiumTest"
+  
+  # 集成报告汇总
+  integration-summary:
+    name: Integration Test Summary
+    runs-on: macos-latest
+    needs: integration-tests
+    if: always()
+    
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v3
+      
+      - name: Generate Comprehensive Report
+        run: |
+          echo "📊 Generating Comprehensive Integration Report..."
+          
+          # 合并所有质量分数
+          python3 Scripts/merge_quality_reports.py \
+            --input-dir . \
+            --output comprehensive_report.html
+          
+          # 生成趋势分析
+          python3 Scripts/generate_trend_analysis.py \
+            --history-file performance_history.json \
+            --current-data . \
+            --output trend_analysis.html
+      
+      - name: Post Integration Summary
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // 读取质量分数
+            const qualityData = JSON.parse(fs.readFileSync('comprehensive_report.json'));
+            
+            // 生成评论内容
+            const comment = `
+            ## 🌟 Aurora Premium Integration Test Summary
+            
+            ### Overall Quality Score: ${qualityData.overallScore.toFixed(3)}
+            
+            ### Test Results by Quality Level:
+            ${qualityData.byQuality.map(q => 
+              `- **${q.level}**: ${q.score.toFixed(3)} (${q.status})`
+            ).join('\n')}
+            
+            ### Performance Metrics:
+            - **Average Frame Rate**: ${qualityData.performance.averageFrameRate.toFixed(1)} fps
+            - **Memory Usage**: ${(qualityData.performance.memoryUsage / 1024 / 1024).toFixed(1)} MB
+            - **Animation Latency**: ${(qualityData.performance.animationLatency * 1000).toFixed(1)} ms
+            
+            ### Memory Analysis:
+            - **Memory Leaks Detected**: ${qualityData.memoryAnalysis.leaksDetected}
+            - **Peak Memory Usage**: ${(qualityData.memoryAnalysis.peakUsage / 1024 / 1024).toFixed(1)} MB
+            
+            ### Recommendations:
+            ${qualityData.recommendations.map(r => `- ${r}`).join('\n')}
+            `;
+            
+            // 发布评论（如果是PR）
+            if (context.payload.pull_request) {
+              github.rest.issues.createComment({
+                issue_number: context.payload.pull_request.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+      
+      - name: Upload Comprehensive Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: comprehensive-integration-report
+          path: |
+            comprehensive_report.html
+            trend_analysis.html
+          retention-days: 90
+  
+  # 性能基准更新
+  update-performance-baseline:
+    name: Update Performance Baseline
+    runs-on: macos-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main' && success()
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Download Performance Data
+        uses: actions/download-artifact@v3
+        with:
+          pattern: integration-test-results-*
+      
+      - name: Update Performance Baseline
+        run: |
+          echo "📈 Updating Performance Baseline..."
+          
+          # 合并所有性能数据
+          python3 Scripts/merge_performance_data.py \
+            --input-dir . \
+            --output new_baseline.json
+          
+          # 验证新基准的有效性
+          python3 Scripts/validate_baseline.py \
+            --baseline new_baseline.json \
+            --threshold 0.1
+          
+          # 更新基准文件
+          cp new_baseline.json baseline_performance.json
+      
+      - name: Commit Updated Baseline
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add baseline_performance.json
+          git commit -m "Update performance baseline [skip ci]" || exit 0
+          git push
+
+# 通知配置
+  notify-results:
+    name: Notify Test Results
+    runs-on: ubuntu-latest
+    needs: [integration-tests, integration-summary]
+    if: always()
+    
+    steps:
+      - name: Notify Slack
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: "🚨 Aurora Premium Integration Tests Failed"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      
+      - name: Notify Teams
+        if: success()
+        uses: skitionek/notify-microsoft-teams@master
+        with:
+          webhook_url: ${{ secrets.TEAMS_WEBHOOK }}
+          message: "✅ Aurora Premium Integration Tests Passed" 

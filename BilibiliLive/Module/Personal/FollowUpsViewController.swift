@@ -118,8 +118,8 @@ class UpCell: BLMotionCollectionViewCell {
     let nameLabel = MarqueeLabel()
     let despLabel = UILabel()
 
-    override func setup() {
-        super.setup()
+    override func setupCell() {
+        super.setupCell()
         contentView.addSubview(imageView)
         contentView.addSubview(nameLabel)
         contentView.addSubview(despLabel)
@@ -147,8 +147,6 @@ class UpCell: BLMotionCollectionViewCell {
         nameLabel.font = UIFont.systemFont(ofSize: 30, weight: .semibold)
         despLabel.font = UIFont.systemFont(ofSize: 20, weight: .regular)
         despLabel.textColor = UIColor(named: "titleColor")
-        contentView.backgroundColor = UIColor(named: "bgColor")
-        contentView.layer.cornerRadius = 16
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {

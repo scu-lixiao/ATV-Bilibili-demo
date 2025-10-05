@@ -8,49 +8,30 @@
 import UIKit
 
 class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
-    let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .light))
-    let selectedWhiteView = UIView()
     let titleLabel = UILabel()
+
     override var isSelected: Bool {
         didSet {
-            updateView()
+            // We can add selection-specific visual changes here if needed in the future.
         }
     }
 
-    override func setup() {
-        super.setup()
-        scaleFactor = 1.05
-        contentView.addSubview(effectView)
-        effectView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-        effectView.layer.cornerRadius = 10
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-        selectedWhiteView.backgroundColor = UIColor.white
-        selectedWhiteView.isHidden = !isFocused
-        effectView.contentView.addSubview(selectedWhiteView)
-        selectedWhiteView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-        effectView.contentView.addSubview(titleLabel)
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(26)
-            make.trailing.equalToSuperview().offset(20)
-            make.top.bottom.equalToSuperview().inset(8)
-        }
+    override func setupCell() {
+        super.setupCell()
+        scaleFactor = 1.05 // A more subtle scale for settings items.
+
+        // Configure the title label for the dark theme.
+        titleLabel.textColor = .white
         titleLabel.textAlignment = .left
         titleLabel.font = UIFont.systemFont(ofSize: 40, weight: .regular)
-        titleLabel.textColor = .black
-    }
 
-    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-        super.didUpdateFocus(in: context, with: coordinator)
-        updateView()
-    }
-
-    func updateView() {
-        selectedWhiteView.isHidden = !(isFocused || isSelected)
+        // Add the label directly to the content view to sit atop the inherited blur effect.
+        contentView.addSubview(titleLabel)
+        titleLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(26)
+            make.trailing.equalToSuperview().offset(-20)
+            make.centerY.equalToSuperview()
+        }
     }
 
     static func makeLayout() -> UICollectionViewLayout {

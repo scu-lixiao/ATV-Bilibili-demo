@@ -9,32 +9,33 @@ import Foundation
 import UIKit
 
 class BLTextOnlyCollectionViewCell: BLMotionCollectionViewCell {
-    private let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
-    private let selectedWhiteView = UIView()
+    // MARK: - Properties
+
     let titleLabel = UILabel()
 
-    override func setup() {
-        super.setup()
-        scaleFactor = 1.15
-        contentView.addSubview(effectView)
-        effectView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-        effectView.contentView.addSubview(titleLabel)
-        titleLabel.snp.makeConstraints { make in
-            make.centerX.centerY.equalToSuperview()
-            make.leading.trailing.equalToSuperview().inset(20)
-            make.top.bottom.lessThanOrEqualToSuperview().inset(8)
-        }
+    // MARK: - Cell Setup
+
+    override func setupCell() {
+        // First, call the superclass's setup to inherit its visual properties and behaviors.
+        super.setupCell()
+
+        // Configure the title label.
         titleLabel.textColor = .white
         titleLabel.numberOfLines = 2
         titleLabel.font = UIFont.systemFont(ofSize: 26, weight: .medium)
-        effectView.layer.cornerRadius = 16
-        effectView.clipsToBounds = true
-    }
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-        super.didUpdateFocus(in: context, with: coordinator)
-        selectedWhiteView.isHidden = !isFocused
+        // Add the title label to the content view, so it appears above the blur effect from the superclass.
+        contentView.addSubview(titleLabel)
+
+        // Set up constraints for the title label.
+        NSLayoutConstraint.activate([
+            titleLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            titleLabel.topAnchor.constraint(lessThanOrEqualTo: contentView.topAnchor, constant: 8),
+            titleLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
+        ])
     }
 }

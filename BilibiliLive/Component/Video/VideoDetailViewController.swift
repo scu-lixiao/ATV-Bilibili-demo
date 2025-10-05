@@ -594,8 +594,8 @@ extension VideoDetailViewController {
 class RelatedVideoCell: BLMotionCollectionViewCell {
     let titleLabel = MarqueeLabel()
     let imageView = UIImageView()
-    override func setup() {
-        super.setup()
+    override func setupCell() {
+        super.setupCell()
         contentView.addSubview(imageView)
         contentView.addSubview(titleLabel)
         imageView.snp.makeConstraints { make in
