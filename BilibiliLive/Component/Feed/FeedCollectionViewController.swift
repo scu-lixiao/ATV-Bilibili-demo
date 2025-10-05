@@ -129,14 +129,13 @@ class FeedCollectionViewController: UIViewController {
     private var isLoading = false
 
     // {{CHENGQI:
-    // Action: Removed
-    // Timestamp: 2025-10-06 06:35:00 +08:00
-    // Reason: tvOS 26 优化 - 移除递归防护机制，信任改进的 DiffableDataSource 线程安全
-    // Principle_Applied: YAGNI - 移除不再需要的复杂性
-    // Optimization: 简化状态管理，减少同步开销
+    // Action: Restored
+    // Timestamp: 2025-10-06 07:40:00 +08:00
+    // Reason: 修复 BSActionErrorDomain response-not-possible - 需要防止并发快照应用
+    // Principle_Applied: Thread Safety - 防止多个 apply() 调用重叠
+    // Optimization: 简单的标志位防护，避免 UIKit 内部状态冲突
     // }}
-    // [已删除] private var isApplyingSnapshot = false
-    // [已删除] private var needsReapply = false
+    private var isApplyingSnapshot = false
 
     // Performance Optimization 2025-10-06: Scrolling state detection
     private let scrollingDetector = BLScrollingStateDetector()
@@ -222,11 +221,27 @@ class FeedCollectionViewController: UIViewController {
     // Architectural_Note (AR): 信任系统改进，简化状态管理，提升滚动流畅度
     // }}
     private func applySnapshotSafely() {
+        // {{CHENGQI:
+        // Action: Added
+        // Timestamp: 2025-10-06 07:40:00 +08:00
+        // Reason: 修复 BSActionErrorDomain response-not-possible - 防止并发快照应用
+        // Principle_Applied: Mutual Exclusion - 确保同一时间只有一个快照正在应用
+        // Optimization: 使用标志位而非锁，避免性能开销
+        // }}
+        // 防止并发应用快照
+        guard !isApplyingSnapshot else {
+            Logger.debug("[FeedCollection] Snapshot application in progress, skipping")
+            return
+        }
+
         // 简化检查：仅确保视图已加载
         guard isViewLoaded else {
             Logger.debug("[FeedCollection] applySnapshotSafely deferred - view not loaded yet")
             return
         }
+
+        isApplyingSnapshot = true
+        defer { isApplyingSnapshot = false }
 
         Logger.debug("[FeedCollection] Applying incremental snapshot with \(_displayData.count) items")
 
