@@ -784,11 +784,15 @@ class BLAuroraBackgroundLayer: BLBaseVisualLayer {
     }
 }
 
-/// 内容增强层 - 完整实现
+/// 内容增强层 - 完整实现 (Premium 2025: Triple-layer glassmorphism)
 class BLContentEnhancementLayer: BLBaseVisualLayer {
     // MARK: - Properties
 
-    private var blurEffectView: UIVisualEffectView?
+    // Premium 2025: Triple-layer glassmorphism system
+    private var baseBlurView: UIVisualEffectView?        // Bottom layer - .thick material
+    private var midBlurView: UIVisualEffectView?         // Middle layer - .regular blur
+    private var vibrancyEffectView: UIVisualEffectView?  // Top layer - vibrancy for highlights
+
     private var contentMaskLayer: CALayer?
     private var edgeEnhancementLayer: CAGradientLayer?
     private var adaptiveBlurLayer: CALayer?
@@ -821,8 +825,8 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
     override func createMainLayer() {
         super.createMainLayer()
 
-        // Create blur effect view
-        createBlurEffectView()
+        // Premium 2025: Create triple-layer glassmorphism system
+        createTripleLayerGlassmorphism()
 
         // Create content mask layer
         createContentMaskLayer()
@@ -837,21 +841,49 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
         updateLayerVisibility()
     }
 
-    private func createBlurEffectView() {
+    /// Premium 2025: Create three-layer glassmorphism effect for maximum depth
+    private func createTripleLayerGlassmorphism() {
         guard let containerView = containerView else { return }
 
-        let blurEffect = UIBlurEffect(style: currentBlurStyle)
-        blurEffectView = UIVisualEffectView(effect: blurEffect)
+        // Layer 1 (Bottom): Thick material for deep background depth
+        let baseBlurEffect = UIBlurEffect(style: .dark)
+        baseBlurView = UIVisualEffectView(effect: baseBlurEffect)
+        guard let baseBlurView = baseBlurView else { return }
 
-        guard let blurEffectView = blurEffectView else { return }
+        baseBlurView.frame = containerView.bounds
+        baseBlurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        baseBlurView.alpha = 0.0
 
-        blurEffectView.frame = containerView.bounds
-        blurEffectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        blurEffectView.alpha = 0.0 // Initial state
+        containerView.addSubview(baseBlurView)
+        containerView.sendSubviewToBack(baseBlurView)
 
-        // Add to container view (not as sublayer)
-        containerView.addSubview(blurEffectView)
-        containerView.sendSubviewToBack(blurEffectView)
+        // Layer 2 (Middle): Regular blur for main glass effect
+        let midBlurEffect = UIBlurEffect(style: .regular)
+        midBlurView = UIVisualEffectView(effect: midBlurEffect)
+        guard let midBlurView = midBlurView else { return }
+
+        midBlurView.frame = containerView.bounds
+        midBlurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        midBlurView.alpha = 0.0
+
+        containerView.addSubview(midBlurView)
+
+        // Layer 3 (Top): Vibrancy effect for highlights and depth perception
+        let vibrancyEffect = UIVibrancyEffect(blurEffect: midBlurEffect, style: .fill)
+        vibrancyEffectView = UIVisualEffectView(effect: vibrancyEffect)
+        guard let vibrancyEffectView = vibrancyEffectView else { return }
+
+        vibrancyEffectView.frame = containerView.bounds
+        vibrancyEffectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        vibrancyEffectView.alpha = 0.0
+
+        // Add a subtle white overlay to the vibrancy layer for highlights
+        let highlightView = UIView(frame: vibrancyEffectView.bounds)
+        highlightView.backgroundColor = UIColor.white.withAlphaComponent(0.08)
+        highlightView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        vibrancyEffectView.contentView.addSubview(highlightView)
+
+        containerView.addSubview(vibrancyEffectView)
     }
 
     private func createContentMaskLayer() {
@@ -1013,24 +1045,41 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
     }
 
     private func updateBlurEffect() {
-        guard let blurEffectView = blurEffectView else { return }
+        // Premium 2025: Update all three glass layers with staggered animation
+        guard let baseBlurView = baseBlurView,
+              let midBlurView = midBlurView else { return }
 
         let newBlurEffect = UIBlurEffect(style: currentBlurStyle)
 
-        // Animate blur style change
-        UIView.transition(with: blurEffectView, duration: blurAnimationDuration, options: .transitionCrossDissolve) {
-            blurEffectView.effect = newBlurEffect
+        // Animate blur style change with staggered timing for depth perception
+        UIView.transition(with: baseBlurView, duration: blurAnimationDuration, options: .transitionCrossDissolve) {
+            baseBlurView.effect = UIBlurEffect(style: .dark)
+        }
+
+        UIView.transition(with: midBlurView, duration: blurAnimationDuration * 1.2, options: .transitionCrossDissolve) {
+            midBlurView.effect = newBlurEffect
         }
     }
 
     private func updateBlurProperties() {
-        guard let blurEffectView = blurEffectView else { return }
+        // Premium 2025: Update triple-layer glassmorphism with parallax-like stagger
+        guard let baseBlurView = baseBlurView,
+              let midBlurView = midBlurView,
+              let vibrancyEffectView = vibrancyEffectView else { return }
 
         let targetAlpha = blurIntensity * currentConfiguration.intensity
 
-        // Animate blur intensity
+        // Animate blur intensity with staggered layers for depth
         UIView.animate(withDuration: intensityAnimationDuration, delay: 0, options: [.curveEaseInOut]) {
-            blurEffectView.alpha = targetAlpha
+            baseBlurView.alpha = targetAlpha * 0.7  // Base layer at 70%
+        }
+
+        UIView.animate(withDuration: intensityAnimationDuration, delay: 0.05, options: [.curveEaseInOut]) {
+            midBlurView.alpha = targetAlpha * 0.85  // Mid layer at 85%
+        }
+
+        UIView.animate(withDuration: intensityAnimationDuration, delay: 0.1, options: [.curveEaseInOut]) {
+            vibrancyEffectView.alpha = targetAlpha * 0.4  // Vibrancy highlights at 40%
         }
 
         // Update other layers
@@ -1087,9 +1136,17 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
         let targetIntensity = isFocused ? blurIntensity : blurIntensity * 0.6
         let targetEdgeOpacity: Float = isFocused ? Float(0.4 * currentConfiguration.intensity) : Float(0.2 * currentConfiguration.intensity)
 
-        // Animate blur intensity
+        // Premium 2025: Animate triple-layer glassmorphism with parallax effect
         UIView.animate(withDuration: currentConfiguration.duration, delay: 0, options: [.curveEaseInOut]) {
-            self.blurEffectView?.alpha = targetIntensity * self.currentConfiguration.intensity
+            self.baseBlurView?.alpha = targetIntensity * self.currentConfiguration.intensity * 0.7
+        }
+
+        UIView.animate(withDuration: currentConfiguration.duration, delay: 0.05, options: [.curveEaseInOut]) {
+            self.midBlurView?.alpha = targetIntensity * self.currentConfiguration.intensity * 0.85
+        }
+
+        UIView.animate(withDuration: currentConfiguration.duration, delay: 0.1, options: [.curveEaseInOut]) {
+            self.vibrancyEffectView?.alpha = targetIntensity * self.currentConfiguration.intensity * 0.4
         }
 
         // Animate edge enhancement
@@ -1280,8 +1337,15 @@ class BLContentEnhancementLayer: BLBaseVisualLayer {
     }
 
     private func cleanupBlurEffects() {
-        blurEffectView?.removeFromSuperview()
-        blurEffectView = nil
+        // Premium 2025: Cleanup triple-layer glassmorphism
+        baseBlurView?.removeFromSuperview()
+        baseBlurView = nil
+
+        midBlurView?.removeFromSuperview()
+        midBlurView = nil
+
+        vibrancyEffectView?.removeFromSuperview()
+        vibrancyEffectView = nil
 
         contentMaskLayer?.removeFromSuperlayer()
         contentMaskLayer = nil
@@ -1329,15 +1393,19 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
     // Lighting configuration
     private var lightingIntensity: CGFloat = 0.6
-    private var particleCount: Float = 50
-    private var glowRadius: CGFloat = 20.0
+    private var particleCount: Float = 150  // Premium 2025: Increased from 50 to 150
+    private var glowRadius: CGFloat = 35.0  // Premium 2025: Increased from 20 to 35
     private var sparkleEnabled: Bool = true
     private var focusRingEnabled: Bool = true
 
+    // Premium 2025: Enhanced radial glow system
+    private var radialGlowLayer: CAGradientLayer?
+    private var edgeTrackingLayer: CAShapeLayer?
+
     // Animation properties
     private var particleAnimationDuration: TimeInterval = 3.0
-    private var glowAnimationDuration: TimeInterval = 2.0
-    private var sparkleAnimationDuration: TimeInterval = 1.5
+    private var glowAnimationDuration: TimeInterval = 2.5  // Slightly slower for smoother feel
+    private var sparkleAnimationDuration: TimeInterval = 1.8
 
     // Color themes for lighting
     private let lightingColors: [[CGColor]] = [
@@ -1382,6 +1450,12 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
     override func createMainLayer() {
         super.createMainLayer()
 
+        // Premium 2025: Create enhanced radial glow
+        createRadialGlowLayer()
+
+        // Premium 2025: Create edge tracking light effect
+        createEdgeTrackingLayer()
+
         // Create particle emitter layer
         createParticleEmitterLayer()
 
@@ -1396,6 +1470,60 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
         // Set initial state
         updateLayerVisibility()
+    }
+
+    /// Premium 2025: Create radial glow layer for visionOS-style depth
+    private func createRadialGlowLayer() {
+        radialGlowLayer = CAGradientLayer()
+        guard let radialGlowLayer = radialGlowLayer,
+              let mainLayer = mainLayer else { return }
+
+        radialGlowLayer.frame = mainLayer.bounds
+        radialGlowLayer.type = .radial
+
+        // Deep, rich radial glow colors
+        radialGlowLayer.colors = [
+            UIColor(red: 1.0, green: 0.85, blue: 0.5, alpha: 0.6).cgColor,   // Warm center
+            UIColor(red: 0.9, green: 0.7, blue: 0.3, alpha: 0.3).cgColor,    // Mid transition
+            UIColor.clear.cgColor,                                            // Fade to transparent
+        ]
+        radialGlowLayer.locations = [0.0, 0.5, 1.0]
+        radialGlowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        radialGlowLayer.endPoint = CGPoint(x: 1.2, y: 1.2)  // Extend beyond bounds
+        radialGlowLayer.opacity = 0.0
+
+        mainLayer.insertSublayer(radialGlowLayer, at: 0)
+    }
+
+    /// Premium 2025: Create edge tracking light effect
+    private func createEdgeTrackingLayer() {
+        edgeTrackingLayer = CAShapeLayer()
+        guard let edgeTrackingLayer = edgeTrackingLayer,
+              let mainLayer = mainLayer else { return }
+
+        edgeTrackingLayer.frame = mainLayer.bounds
+        edgeTrackingLayer.fillColor = UIColor.clear.cgColor
+        edgeTrackingLayer.strokeColor = UIColor(red: 1.0, green: 0.9, blue: 0.7, alpha: 0.8).cgColor
+        edgeTrackingLayer.lineWidth = 3.0
+        edgeTrackingLayer.opacity = 0.0
+
+        // Create rounded rect path for edge
+        let path = UIBezierPath(roundedRect: edgeTrackingLayer.bounds.insetBy(dx: 2, dy: 2), cornerRadius: 12)
+        edgeTrackingLayer.path = path.cgPath
+
+        // Add gradient mask for edge glow effect
+        let gradientMask = CAGradientLayer()
+        gradientMask.frame = edgeTrackingLayer.bounds
+        gradientMask.colors = [
+            UIColor.white.withAlphaComponent(0.3).cgColor,
+            UIColor.white.cgColor,
+            UIColor.white.withAlphaComponent(0.3).cgColor,
+        ]
+        gradientMask.startPoint = CGPoint(x: 0, y: 0)
+        gradientMask.endPoint = CGPoint(x: 1, y: 1)
+        edgeTrackingLayer.mask = gradientMask
+
+        mainLayer.addSublayer(edgeTrackingLayer)
     }
 
     private func createParticleEmitterLayer() {
@@ -1743,6 +1871,12 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
         let intensityMultiplier: CGFloat = isFocused ? 1.0 : 0.4
         let targetOpacity = Float(lightingIntensity * intensityMultiplier * currentConfiguration.intensity)
 
+        // Premium 2025: Animate radial glow first for depth
+        animateRadialGlow(isFocused: isFocused, targetOpacity: targetOpacity)
+
+        // Premium 2025: Animate edge tracking
+        animateEdgeTracking(isFocused: isFocused, targetOpacity: targetOpacity)
+
         // Animate particle system
         animateParticleSystem(isFocused: isFocused, targetOpacity: targetOpacity)
 
@@ -1754,6 +1888,87 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
 
         // Animate sparkles
         animateSparkles(isFocused: isFocused, targetOpacity: targetOpacity)
+    }
+
+    /// Premium 2025: Animate radial glow for visionOS-style depth
+    private func animateRadialGlow(isFocused: Bool, targetOpacity: Float) {
+        guard let radialGlowLayer = radialGlowLayer else { return }
+
+        let glowOpacity = isFocused ? targetOpacity * 0.7 : 0.0
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(currentConfiguration.duration * 1.5)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+
+        radialGlowLayer.opacity = glowOpacity
+
+        CATransaction.commit()
+
+        // Add breathing animation when focused
+        if isFocused {
+            addRadialGlowBreathing()
+        } else {
+            radialGlowLayer.removeAnimation(forKey: "breathing")
+        }
+    }
+
+    private func addRadialGlowBreathing() {
+        guard let radialGlowLayer = radialGlowLayer else { return }
+
+        let breathe = CABasicAnimation(keyPath: "transform.scale")
+        breathe.fromValue = 1.0
+        breathe.toValue = 1.15
+        breathe.duration = 3.0
+        breathe.autoreverses = true
+        breathe.repeatCount = .infinity
+        breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        radialGlowLayer.add(breathe, forKey: "breathing")
+    }
+
+    /// Premium 2025: Animate edge tracking light
+    private func animateEdgeTracking(isFocused: Bool, targetOpacity: Float) {
+        guard let edgeTrackingLayer = edgeTrackingLayer else { return }
+
+        let edgeOpacity = isFocused ? targetOpacity * 0.6 : 0.0
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(currentConfiguration.duration)
+        CATransaction.setAnimationTimingFunction(currentConfiguration.timing)
+
+        edgeTrackingLayer.opacity = edgeOpacity
+
+        CATransaction.commit()
+
+        // Add traveling light animation when focused
+        if isFocused {
+            addEdgeTrackingAnimation()
+        } else {
+            edgeTrackingLayer.mask?.removeAllAnimations()
+        }
+    }
+
+    private func addEdgeTrackingAnimation() {
+        guard let edgeTrackingLayer = edgeTrackingLayer,
+              let maskLayer = edgeTrackingLayer.mask as? CAGradientLayer else { return }
+
+        // Animate the gradient mask position to create traveling light effect
+        let moveAnimation = CABasicAnimation(keyPath: "startPoint")
+        moveAnimation.fromValue = CGPoint(x: 0.0, y: 0.0)
+        moveAnimation.toValue = CGPoint(x: 1.0, y: 1.0)
+        moveAnimation.duration = 2.5
+        moveAnimation.repeatCount = .infinity
+        moveAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        let moveEndAnimation = CABasicAnimation(keyPath: "endPoint")
+        moveEndAnimation.fromValue = CGPoint(x: 1.0, y: 1.0)
+        moveEndAnimation.toValue = CGPoint(x: 0.0, y: 0.0)
+        moveEndAnimation.duration = 2.5
+        moveEndAnimation.repeatCount = .infinity
+        moveEndAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        maskLayer.add(moveAnimation, forKey: "startPointMove")
+        maskLayer.add(moveEndAnimation, forKey: "endPointMove")
     }
 
     private func animateParticleSystem(isFocused: Bool, targetOpacity: Float) {
@@ -2062,15 +2277,278 @@ class BLLightingEffectLayer: BLBaseVisualLayer {
     }
 }
 
-/// 交互反馈层 - 占位实现
+/// 交互反馈层 - Premium 2025: 微交互细节实现
 class BLInteractionFeedbackLayer: BLBaseVisualLayer {
+    // MARK: - Properties
+
+    // Premium 2025: Micro-interaction layers
+    private var hoverAnticipationLayer: CALayer?      // Pre-focus subtle animation
+    private var rippleEffectLayer: CAShapeLayer?      // Touch/focus ripple effect
+    private var pulseIndicatorLayer: CALayer?         // Status pulse indicator
+
+    // Interaction configuration
+    private var isHoverAnticipationEnabled: Bool = true
+    private var rippleIntensity: CGFloat = 0.7
+    private var anticipationDelay: TimeInterval = 0.1  // 100ms before actual focus
+
+    // Animation properties
+    private var anticipationAnimator: UIViewPropertyAnimator?
+    private var rippleAnimationDuration: TimeInterval = 0.8
+    private var pulseAnimationDuration: TimeInterval = 1.5
+
     init() {
         super.init(type: .interactionFeedback)
     }
 
+    // MARK: - Layer Creation
+
     override func createMainLayer() {
-        // 将在P2-LD-008任务中实现微交互反馈
         super.createMainLayer()
-        mainLayer?.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.01).cgColor
+
+        // Premium 2025: Create hover anticipation layer
+        createHoverAnticipationLayer()
+
+        // Premium 2025: Create ripple effect layer
+        createRippleEffectLayer()
+
+        // Premium 2025: Create pulse indicator
+        createPulseIndicatorLayer()
+
+        // Set initial state
+        updateLayerVisibility()
+    }
+
+    /// Premium 2025: Create hover anticipation for predictive animation
+    private func createHoverAnticipationLayer() {
+        hoverAnticipationLayer = CALayer()
+        guard let hoverAnticipationLayer = hoverAnticipationLayer,
+              let mainLayer = mainLayer else { return }
+
+        hoverAnticipationLayer.frame = mainLayer.bounds
+        hoverAnticipationLayer.backgroundColor = UIColor.white.withAlphaComponent(0.03).cgColor
+        hoverAnticipationLayer.cornerRadius = 12
+        hoverAnticipationLayer.opacity = 0.0
+
+        mainLayer.addSublayer(hoverAnticipationLayer)
+    }
+
+    /// Premium 2025: Create ripple effect for interaction feedback
+    private func createRippleEffectLayer() {
+        rippleEffectLayer = CAShapeLayer()
+        guard let rippleEffectLayer = rippleEffectLayer,
+              let mainLayer = mainLayer else { return }
+
+        rippleEffectLayer.frame = mainLayer.bounds
+        rippleEffectLayer.fillColor = UIColor.clear.cgColor
+        rippleEffectLayer.strokeColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        rippleEffectLayer.lineWidth = 2.0
+        rippleEffectLayer.opacity = 0.0
+
+        // Create circular path for ripple
+        let center = CGPoint(x: rippleEffectLayer.bounds.midX, y: rippleEffectLayer.bounds.midY)
+        let initialRadius: CGFloat = 20
+        let path = UIBezierPath(arcCenter: center, radius: initialRadius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        rippleEffectLayer.path = path.cgPath
+
+        mainLayer.addSublayer(rippleEffectLayer)
+    }
+
+    /// Premium 2025: Create pulse indicator for status feedback
+    private func createPulseIndicatorLayer() {
+        pulseIndicatorLayer = CALayer()
+        guard let pulseIndicatorLayer = pulseIndicatorLayer,
+              let mainLayer = mainLayer else { return }
+
+        // Small indicator in corner
+        let indicatorSize: CGFloat = 8
+        let padding: CGFloat = 12
+        pulseIndicatorLayer.frame = CGRect(
+            x: mainLayer.bounds.width - indicatorSize - padding,
+            y: padding,
+            width: indicatorSize,
+            height: indicatorSize
+        )
+        pulseIndicatorLayer.backgroundColor = UIColor(red: 0.3, green: 0.8, blue: 0.5, alpha: 0.8).cgColor
+        pulseIndicatorLayer.cornerRadius = indicatorSize / 2
+        pulseIndicatorLayer.opacity = 0.0
+
+        mainLayer.addSublayer(pulseIndicatorLayer)
+    }
+
+    // MARK: - Focus State Management
+
+    override func performFocusUpdate(isFocused: Bool) {
+        if isFocused {
+            // Cancel anticipation if it was running
+            anticipationAnimator?.stopAnimation(true)
+
+            // Trigger ripple effect
+            triggerRippleEffect()
+
+            // Show hover anticipation layer with quick fade
+            animateHoverAnticipation(show: true, duration: 0.2)
+
+            // Activate pulse indicator
+            activatePulseIndicator()
+        } else {
+            // Fade out all interaction layers
+            animateHoverAnticipation(show: false, duration: 0.3)
+            deactivatePulseIndicator()
+        }
+    }
+
+    // MARK: - Hover Anticipation
+
+    /// Premium 2025: Simulate hover anticipation before actual focus
+    func triggerHoverAnticipation() {
+        guard isHoverAnticipationEnabled else { return }
+
+        // Subtle scale anticipation
+        animateHoverAnticipation(show: true, duration: anticipationDelay)
+    }
+
+    private func animateHoverAnticipation(show: Bool, duration: TimeInterval) {
+        guard let hoverAnticipationLayer = hoverAnticipationLayer else { return }
+
+        let targetOpacity: Float = show ? 1.0 : 0.0
+        let targetScale: CGFloat = show ? 1.02 : 1.0
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(duration)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+
+        hoverAnticipationLayer.opacity = targetOpacity
+        hoverAnticipationLayer.transform = CATransform3DMakeScale(targetScale, targetScale, 1.0)
+
+        CATransaction.commit()
+    }
+
+    // MARK: - Ripple Effect
+
+    /// Premium 2025: Trigger ripple effect on focus
+    private func triggerRippleEffect() {
+        guard let rippleEffectLayer = rippleEffectLayer else { return }
+
+        // Reset to initial state
+        let center = CGPoint(x: rippleEffectLayer.bounds.midX, y: rippleEffectLayer.bounds.midY)
+        let initialRadius: CGFloat = 20
+        let finalRadius: CGFloat = min(rippleEffectLayer.bounds.width, rippleEffectLayer.bounds.height) * 0.7
+
+        // Create expanding path animation
+        let initialPath = UIBezierPath(arcCenter: center, radius: initialRadius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        let finalPath = UIBezierPath(arcCenter: center, radius: finalRadius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+
+        // Path animation
+        let pathAnimation = CABasicAnimation(keyPath: "path")
+        pathAnimation.fromValue = initialPath.cgPath
+        pathAnimation.toValue = finalPath.cgPath
+        pathAnimation.duration = rippleAnimationDuration
+        pathAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        // Opacity animation
+        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
+        opacityAnimation.fromValue = rippleIntensity
+        opacityAnimation.toValue = 0.0
+        opacityAnimation.duration = rippleAnimationDuration
+        opacityAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        // Line width animation
+        let lineWidthAnimation = CABasicAnimation(keyPath: "lineWidth")
+        lineWidthAnimation.fromValue = 2.0
+        lineWidthAnimation.toValue = 0.5
+        lineWidthAnimation.duration = rippleAnimationDuration
+        lineWidthAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        // Group animations
+        let group = CAAnimationGroup()
+        group.animations = [pathAnimation, opacityAnimation, lineWidthAnimation]
+        group.duration = rippleAnimationDuration
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+
+        rippleEffectLayer.add(group, forKey: "ripple")
+    }
+
+    // MARK: - Pulse Indicator
+
+    /// Premium 2025: Activate pulse indicator
+    private func activatePulseIndicator() {
+        guard let pulseIndicatorLayer = pulseIndicatorLayer else { return }
+
+        // Fade in
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.3)
+        pulseIndicatorLayer.opacity = 1.0
+        CATransaction.commit()
+
+        // Add pulsing animation
+        let pulse = CABasicAnimation(keyPath: "transform.scale")
+        pulse.fromValue = 1.0
+        pulse.toValue = 1.3
+        pulse.duration = pulseAnimationDuration
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        pulseIndicatorLayer.add(pulse, forKey: "pulse")
+
+        // Add opacity pulse
+        let opacityPulse = CABasicAnimation(keyPath: "opacity")
+        opacityPulse.fromValue = 1.0
+        opacityPulse.toValue = 0.5
+        opacityPulse.duration = pulseAnimationDuration
+        opacityPulse.autoreverses = true
+        opacityPulse.repeatCount = .infinity
+        opacityPulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        pulseIndicatorLayer.add(opacityPulse, forKey: "opacityPulse")
+    }
+
+    private func deactivatePulseIndicator() {
+        guard let pulseIndicatorLayer = pulseIndicatorLayer else { return }
+
+        // Remove animations
+        pulseIndicatorLayer.removeAllAnimations()
+
+        // Fade out
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.3)
+        pulseIndicatorLayer.opacity = 0.0
+        CATransaction.commit()
+    }
+
+    // MARK: - Configuration
+
+    override func applyConfiguration() {
+        super.applyConfiguration()
+
+        let intensity = currentConfiguration.intensity
+        let properties = currentConfiguration.properties
+
+        // Update interaction parameters
+        rippleIntensity = 0.5 + (0.4 * intensity)  // 0.5 to 0.9
+        isHoverAnticipationEnabled = properties["hoverAnticipation"] as? Bool ?? true
+
+        // Update animation durations
+        rippleAnimationDuration = currentConfiguration.duration * 2.5
+        pulseAnimationDuration = currentConfiguration.duration * 4.0
+    }
+
+    // MARK: - Cleanup
+
+    override func cleanup() {
+        anticipationAnimator?.stopAnimation(true)
+        anticipationAnimator = nil
+
+        hoverAnticipationLayer?.removeFromSuperlayer()
+        hoverAnticipationLayer = nil
+
+        rippleEffectLayer?.removeFromSuperlayer()
+        rippleEffectLayer = nil
+
+        pulseIndicatorLayer?.removeFromSuperlayer()
+        pulseIndicatorLayer = nil
+
+        super.cleanup()
     }
 }

@@ -13,6 +13,12 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
 
     var scaleFactor: CGFloat = 1.15
 
+    // Premium 2025 enhancement: Deep background gradient layer
+    private var deepBackgroundLayer: CAGradientLayer?
+
+    // Premium 2025 enhancement: Multi-layered shadow system
+    private var secondaryShadowLayer: CALayer?
+
     // --- Private Properties ---
 
     // A view that provides a frosted-glass effect.
@@ -42,6 +48,12 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
     // MARK: - Cell Setup
 
     func setupCell() {
+        // Premium 2025: Setup deep background gradient layer
+        setupDeepBackgroundLayer()
+
+        // Premium 2025: Setup multi-layered shadow system
+        setupMultiLayeredShadows()
+
         // Insert the blur view at the bottom of the view hierarchy.
         contentView.insertSubview(blurEffectView, at: 0)
 
@@ -56,8 +68,45 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
         // Configure layer properties for a premium look.
         layer.cornerRadius = 12
         layer.shadowColor = UIColor.black.cgColor
-        layer.shadowRadius = 25
+        layer.shadowRadius = 45  // Premium 2025: Increased from 25 to 45 for deeper shadows
         layer.shadowOffset = CGSize(width: 0, height: 20)
+    }
+
+    // MARK: - Premium 2025 Setup Methods
+
+    /// Setup deep background gradient for enhanced dark mode depth
+    private func setupDeepBackgroundLayer() {
+        deepBackgroundLayer = CAGradientLayer()
+        guard let deepBackgroundLayer = deepBackgroundLayer else { return }
+
+        deepBackgroundLayer.frame = contentView.bounds
+
+        // Deep blue-black gradient for premium dark mode feel
+        deepBackgroundLayer.colors = [
+            UIColor(red: 0.04, green: 0.055, blue: 0.10, alpha: 1.0).cgColor,  // #0a0e1a
+            UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0).cgColor,      // #000000
+        ]
+        deepBackgroundLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
+        deepBackgroundLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
+        deepBackgroundLayer.cornerRadius = 12
+        deepBackgroundLayer.opacity = 0.0  // Will animate on focus
+
+        contentView.layer.insertSublayer(deepBackgroundLayer, at: 0)
+    }
+
+    /// Setup multi-layered shadow system for depth perception
+    private func setupMultiLayeredShadows() {
+        secondaryShadowLayer = CALayer()
+        guard let secondaryShadowLayer = secondaryShadowLayer else { return }
+
+        secondaryShadowLayer.frame = bounds
+        secondaryShadowLayer.cornerRadius = 12
+        secondaryShadowLayer.shadowColor = UIColor(red: 0.3, green: 0.4, blue: 0.8, alpha: 1.0).cgColor  // Subtle blue tint
+        secondaryShadowLayer.shadowRadius = 60  // Larger, softer shadow
+        secondaryShadowLayer.shadowOffset = CGSize(width: 0, height: 30)
+        secondaryShadowLayer.shadowOpacity = 0.0  // Will animate on focus
+
+        layer.insertSublayer(secondaryShadowLayer, at: 0)
     }
 
     // MARK: - Focus Handling
@@ -68,8 +117,8 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
         // Cancel any ongoing animations.
         focusAnimator?.stopAnimation(true)
 
-        // Create a new animator for the focus transition.
-        focusAnimator = UIViewPropertyAnimator(duration: 0.5, dampingRatio: 0.8) {
+        // Premium 2025: Enhanced fluid animation with lower damping ratio for smoother feel
+        focusAnimator = UIViewPropertyAnimator(duration: 0.65, dampingRatio: 0.68) {
             if self.isFocused {
                 self.applyFocusedState()
             } else {
@@ -89,15 +138,28 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
 
         layer.transform = transform
 
-        // Enhance shadow and reveal the blur effect.
-        layer.shadowOpacity = 0.4
+        // Premium 2025: Enhanced shadow system with deeper, more pronounced shadows
+        layer.shadowOpacity = 0.6  // Increased from 0.4 for more depth
+        secondaryShadowLayer?.shadowOpacity = 0.3  // Secondary shadow for layered depth
+
+        // Premium 2025: Reveal deep background gradient
+        deepBackgroundLayer?.opacity = 0.8
+
+        // Enhance blur effect
         blurEffectView.alpha = 1.0
     }
 
     private func applyUnfocusedState() {
         // Reset all transformations and effects.
         layer.transform = CATransform3DIdentity
-        layer.shadowOpacity = 0
+
+        // Premium 2025: Subtle shadows remain for ambient depth
+        layer.shadowOpacity = 0.15  // Changed from 0 to maintain subtle depth
+        secondaryShadowLayer?.shadowOpacity = 0.0
+
+        // Premium 2025: Fade out deep background
+        deepBackgroundLayer?.opacity = 0.0
+
         blurEffectView.alpha = 0
     }
 }

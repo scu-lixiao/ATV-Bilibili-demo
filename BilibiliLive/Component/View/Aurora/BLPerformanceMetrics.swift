@@ -2,386 +2,233 @@
 //  BLPerformanceMetrics.swift
 //  BilibiliLive
 //
-//  Aurora Premium Enhancement System
-//  Task: P1-LD-002 - Performance Metrics System
+//  Created by Aurora Premium Enhancement on 2025/06/09.
+//  Premium 2025: Enhanced performance monitoring and adaptive quality system
 //
 
+import Foundation
 import QuartzCore
 import UIKit
 
-// MARK: - Performance Data Structures
+// MARK: - Premium 2025: Performance Monitoring System
 
-struct BLAnimationMetrics {
-    let identifier: String
-    let startTime: CFTimeInterval
-    let endTime: CFTimeInterval?
-    let targetLayers: [BLVisualLayerType]
+/// Performance quality level for adaptive degradation
+public enum BLPerformanceQualityLevel: Int, Comparable {
+    case ultra = 4    // 60fps, all effects enabled
+    case high = 3     // 50-60fps, full effects
+    case medium = 2   // 40-50fps, reduced particles
+    case low = 1      // 30-40fps, minimal effects
+    case minimal = 0  // <30fps, essential only
 
-    var duration: CFTimeInterval? {
-        guard let endTime = endTime else { return nil }
-        return endTime - startTime
+    public static func < (lhs: BLPerformanceQualityLevel, rhs: BLPerformanceQualityLevel) -> Bool {
+        return lhs.rawValue < rhs.rawValue
+    }
+
+    var qualityMultiplier: CGFloat {
+        switch self {
+        case .ultra: return 1.0
+        case .high: return 0.85
+        case .medium: return 0.65
+        case .low: return 0.45
+        case .minimal: return 0.25
+        }
     }
 }
 
-struct BLLayerMetrics {
-    let type: BLVisualLayerType
-    var activationCount: Int = 0
-    var totalActiveTime: CFTimeInterval = 0
-    var errorCount: Int = 0
-    var lastActivationTime: CFTimeInterval?
-    var averageActivationDuration: CFTimeInterval {
-        return activationCount > 0 ? totalActiveTime / CFTimeInterval(activationCount) : 0
-    }
-}
-
-struct BLSystemMetrics {
-    var frameRate: Double = 60.0
-    var memoryUsage: Double = 0.0
-    var cpuUsage: Double = 0.0
-    var gpuUsage: Double = 0.0
-    var batteryImpact: Double = 0.0
-    var thermalState: ProcessInfo.ThermalState = .nominal
-
-    var isPerformanceCritical: Bool {
-        return frameRate < 30 || memoryUsage > 80 || cpuUsage > 80 || thermalState != .nominal
-    }
-}
-
-// MARK: - Performance Metrics Manager
-
-class BLPerformanceMetrics {
+/// Premium 2025: Enhanced performance metrics with automatic quality adaptation
+public class BLPremiumPerformanceMonitor {
     // MARK: - Properties
 
-    private var animationMetrics: [String: BLAnimationMetrics] = [:]
-    private var layerMetrics: [BLVisualLayerType: BLLayerMetrics] = [:]
-    private var systemMetrics: BLSystemMetrics = .init()
+    /// Singleton instance
+    public static let shared = BLPremiumPerformanceMonitor()
 
+    /// Current FPS
+    public private(set) var currentFPS: Double = 60.0
+
+    /// Current memory usage in MB
+    public private(set) var memoryUsage: Double = 0.0
+
+    /// Current quality level
+    public private(set) var currentQualityLevel: BLPerformanceQualityLevel = .ultra
+
+    /// FPS threshold for quality degradation
+    private let fpsThresholds: [BLPerformanceQualityLevel: Double] = [
+        .ultra: 55.0,
+        .high: 50.0,
+        .medium: 40.0,
+        .low: 30.0,
+        .minimal: 0.0,
+    ]
+
+    /// Display link for FPS monitoring
     private var displayLink: CADisplayLink?
+
+    /// FPS calculation
+    private var lastFrameTimestamp: CFTimeInterval = 0
     private var frameCount: Int = 0
-    private var lastTimestamp: CFTimeInterval = 0
+    private var accumulatedFrameTime: CFTimeInterval = 0
 
-    // Performance thresholds
-    private let targetFrameRate: Double = 60.0
-    private let warningFrameRate: Double = 45.0
-    private let criticalFrameRate: Double = 30.0
+    /// Quality change callback
+    public var onQualityLevelChanged: ((BLPerformanceQualityLevel) -> Void)?
 
-    private let maxMemoryUsage: Double = 50.0 // MB
-    private let warningMemoryUsage: Double = 40.0 // MB
+    /// Performance degradation callback
+    public var onPerformanceDegraded: ((Double) -> Void)?
+
+    /// Is monitoring active
+    private var isMonitoring: Bool = false
+
+    /// Stability counter for quality changes
+    private var stabilityCounter: Int = 0
+    private let stabilityThreshold: Int = 30  // 30 frames of stability required
 
     // MARK: - Initialization
 
-    init() {
-        setupDisplayLink()
-        setupSystemMonitoring()
-        initializeLayerMetrics()
-    }
+    private init() {}
 
-    deinit {
-        stopMonitoring()
-    }
+    // MARK: - Public Methods
 
-    // MARK: - Setup Methods
+    /// Start performance monitoring
+    public func startMonitoring() {
+        guard !isMonitoring else { return }
 
-    private func setupDisplayLink() {
-        displayLink = CADisplayLink(target: self, selector: #selector(updateFrameRate))
+        isMonitoring = true
+        lastFrameTimestamp = CACurrentMediaTime()
+
+        // Create display link
+        displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
+
+        print("[Aurora Premium] Performance monitoring started")
     }
 
-    private func setupSystemMonitoring() {
-        // Start system metrics monitoring
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.updateSystemMetrics()
-        }
-    }
+    /// Stop performance monitoring
+    public func stopMonitoring() {
+        guard isMonitoring else { return }
 
-    private func initializeLayerMetrics() {
-        for layerType in [BLVisualLayerType.background, .contentEnhancement, .lightingEffect, .interactionFeedback] {
-            layerMetrics[layerType] = BLLayerMetrics(type: layerType)
-        }
-    }
-
-    private func stopMonitoring() {
+        isMonitoring = false
         displayLink?.invalidate()
         displayLink = nil
+
+        print("[Aurora Premium] Performance monitoring stopped")
     }
 
-    // MARK: - Frame Rate Monitoring
+    /// Manually set quality level
+    public func setQualityLevel(_ level: BLPerformanceQualityLevel) {
+        guard level != currentQualityLevel else { return }
 
-    @objc private func updateFrameRate(_ displayLink: CADisplayLink) {
-        if lastTimestamp == 0 {
-            lastTimestamp = displayLink.timestamp
-            return
+        let oldLevel = currentQualityLevel
+        currentQualityLevel = level
+
+        print("[Aurora Premium] Quality level changed: \(oldLevel) → \(level)")
+        onQualityLevelChanged?(level)
+    }
+
+    /// Get recommended quality level for current performance
+    public func getRecommendedQualityLevel() -> BLPerformanceQualityLevel {
+        // Determine quality based on current FPS
+        if currentFPS >= 55.0 {
+            return .ultra
+        } else if currentFPS >= 50.0 {
+            return .high
+        } else if currentFPS >= 40.0 {
+            return .medium
+        } else if currentFPS >= 30.0 {
+            return .low
+        } else {
+            return .minimal
         }
+    }
 
+    // MARK: - Private Methods
+
+    @objc private func displayLinkTick() {
+        let currentTime = CACurrentMediaTime()
+        let deltaTime = currentTime - lastFrameTimestamp
+
+        guard deltaTime > 0 else { return }
+
+        // Calculate instantaneous FPS
+        let instantFPS = 1.0 / deltaTime
+
+        // Accumulate for smoothed FPS
         frameCount += 1
-        let currentTime = displayLink.timestamp
-        let elapsed = currentTime - lastTimestamp
+        accumulatedFrameTime += deltaTime
 
-        if elapsed >= 1.0 {
-            systemMetrics.frameRate = Double(frameCount) / elapsed
+        // Update FPS every 30 frames for stability
+        if frameCount >= 30 {
+            currentFPS = Double(frameCount) / accumulatedFrameTime
+
+            // Update memory usage
+            updateMemoryUsage()
+
+            // Check for quality adaptation
+            checkQualityAdaptation()
+
+            // Reset accumulators
             frameCount = 0
-            lastTimestamp = currentTime
+            accumulatedFrameTime = 0
         }
+
+        lastFrameTimestamp = currentTime
     }
 
-    // MARK: - System Metrics Updates
-
-    private func updateSystemMetrics() {
-        // Update memory usage
-        systemMetrics.memoryUsage = getCurrentMemoryUsage()
-
-        // Update thermal state
-        systemMetrics.thermalState = ProcessInfo.processInfo.thermalState
-
-        // Update CPU usage (simplified estimation)
-        systemMetrics.cpuUsage = getCurrentCPUUsage()
-
-        // Estimate battery impact based on activity
-        systemMetrics.batteryImpact = estimateBatteryImpact()
-    }
-
-    private func getCurrentMemoryUsage() -> Double {
-        var taskInfo = mach_task_basic_info()
+    private func updateMemoryUsage() {
+        var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
 
-        let result = withUnsafeMutablePointer(to: &taskInfo) {
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
                 task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
             }
         }
 
-        if result == KERN_SUCCESS {
-            return Double(taskInfo.resident_size) / (1024 * 1024) // Convert to MB
+        if kerr == KERN_SUCCESS {
+            memoryUsage = Double(info.resident_size) / 1024.0 / 1024.0  // Convert to MB
         }
-
-        return 0.0
     }
 
-    private func getCurrentCPUUsage() -> Double {
-        // Simplified CPU usage estimation based on animation activity
-        let activeAnimations = animationMetrics.filter { $0.value.endTime == nil }.count
-        let maxConcurrentAnimations = 4
+    private func checkQualityAdaptation() {
+        let recommendedLevel = getRecommendedQualityLevel()
 
-        return min(Double(activeAnimations) / Double(maxConcurrentAnimations) * 100, 100)
-    }
+        // Only change quality if stable for threshold frames
+        if recommendedLevel != currentQualityLevel {
+            stabilityCounter += 1
 
-    private func estimateBatteryImpact() -> Double {
-        // Estimate based on active layers and frame rate deviation
-        let activeLayerCount = layerMetrics.filter {
-            $0.value.lastActivationTime != nil &&
-                CACurrentMediaTime() - $0.value.lastActivationTime! < 1.0
-        }.count
+            if stabilityCounter >= stabilityThreshold {
+                // Quality level change confirmed
+                setQualityLevel(recommendedLevel)
+                stabilityCounter = 0
 
-        let frameRateImpact = max(0, (targetFrameRate - systemMetrics.frameRate) / targetFrameRate * 100)
-        let layerImpact = Double(activeLayerCount) * 5.0 // 5% per active layer
-
-        return min(frameRateImpact + layerImpact, 100)
-    }
-
-    // MARK: - Animation Metrics
-
-    func recordAnimationStart(_ identifier: String, targetLayers: [BLVisualLayerType] = []) {
-        let metrics = BLAnimationMetrics(
-            identifier: identifier,
-            startTime: CACurrentMediaTime(),
-            endTime: nil,
-            targetLayers: targetLayers
-        )
-
-        animationMetrics[identifier] = metrics
-    }
-
-    func recordAnimationEnd(_ identifier: String) {
-        guard var metrics = animationMetrics[identifier] else { return }
-
-        let endTime = CACurrentMediaTime()
-        let updatedMetrics = BLAnimationMetrics(
-            identifier: metrics.identifier,
-            startTime: metrics.startTime,
-            endTime: endTime,
-            targetLayers: metrics.targetLayers
-        )
-
-        animationMetrics[identifier] = updatedMetrics
-
-        // Clean up old completed animations
-        cleanupOldAnimationMetrics()
-    }
-
-    private func cleanupOldAnimationMetrics() {
-        let currentTime = CACurrentMediaTime()
-        let cleanupThreshold: CFTimeInterval = 30.0 // Keep metrics for 30 seconds
-
-        animationMetrics = animationMetrics.filter { key, metrics in
-            if let endTime = metrics.endTime {
-                return currentTime - endTime < cleanupThreshold
+                // Notify performance degradation if quality dropped
+                if recommendedLevel < currentQualityLevel {
+                    onPerformanceDegraded?(currentFPS)
+                }
             }
-            return true // Keep ongoing animations
-        }
-    }
-
-    // MARK: - Layer Metrics
-
-    func recordLayerActivation(_ layer: BLVisualLayerType) {
-        guard var metrics = layerMetrics[layer] else { return }
-
-        metrics.activationCount += 1
-        metrics.lastActivationTime = CACurrentMediaTime()
-        layerMetrics[layer] = metrics
-    }
-
-    func recordLayerDeactivation(_ layer: BLVisualLayerType) {
-        guard var metrics = layerMetrics[layer],
-              let activationTime = metrics.lastActivationTime else { return }
-
-        let duration = CACurrentMediaTime() - activationTime
-        metrics.totalActiveTime += duration
-        metrics.lastActivationTime = nil
-        layerMetrics[layer] = metrics
-    }
-
-    func recordLayerError(_ layer: BLVisualLayerType, message: String) {
-        guard var metrics = layerMetrics[layer] else { return }
-
-        metrics.errorCount += 1
-        layerMetrics[layer] = metrics
-
-        // Log error for debugging
-        print("Aurora Premium - Layer Error [\(layer)]: \(message)")
-    }
-
-    // MARK: - Public Interface
-
-    func getCurrentFPS() -> Double {
-        return systemMetrics.frameRate
-    }
-
-    func getMemoryUsage() -> Double {
-        return systemMetrics.memoryUsage
-    }
-
-    func getCPUUsage() -> Double {
-        return systemMetrics.cpuUsage
-    }
-
-    func getBatteryImpact() -> Double {
-        return systemMetrics.batteryImpact
-    }
-
-    func getThermalState() -> ProcessInfo.ThermalState {
-        return systemMetrics.thermalState
-    }
-
-    func getSystemMetrics() -> BLSystemMetrics {
-        return systemMetrics
-    }
-
-    func getLayerMetrics(_ layer: BLVisualLayerType) -> BLLayerMetrics? {
-        return layerMetrics[layer]
-    }
-
-    func getAllLayerMetrics() -> [BLVisualLayerType: BLLayerMetrics] {
-        return layerMetrics
-    }
-
-    func getActiveAnimations() -> [BLAnimationMetrics] {
-        return animationMetrics.values.filter { $0.endTime == nil }
-    }
-
-    func getCompletedAnimations() -> [BLAnimationMetrics] {
-        return animationMetrics.values.filter { $0.endTime != nil }
-    }
-
-    // MARK: - Performance Analysis
-
-    func getPerformanceStatus() -> BLPerformanceStatus {
-        if systemMetrics.isPerformanceCritical {
-            return .critical
-        } else if systemMetrics.frameRate < warningFrameRate ||
-            systemMetrics.memoryUsage > warningMemoryUsage
-        {
-            return .warning
         } else {
-            return .good
+            // Reset stability counter if performance is stable
+            stabilityCounter = max(0, stabilityCounter - 1)
         }
     }
+}
 
-    func getPerformanceReport() -> BLPerformanceReport {
-        return BLPerformanceReport(
-            frameRate: systemMetrics.frameRate,
-            memoryUsage: systemMetrics.memoryUsage,
-            cpuUsage: systemMetrics.cpuUsage,
-            batteryImpact: systemMetrics.batteryImpact,
-            thermalState: systemMetrics.thermalState,
-            activeAnimations: getActiveAnimations().count,
-            layerMetrics: layerMetrics,
-            recommendations: generatePerformanceRecommendations()
+// MARK: - Performance-Aware Configuration Extension
+
+extension BLLayerConfiguration {
+    /// Create configuration adapted to current performance level
+    public static func adaptive(for qualityLevel: BLPerformanceQualityLevel) -> BLLayerConfiguration {
+        let multiplier = qualityLevel.qualityMultiplier
+
+        return BLLayerConfiguration(
+            intensity: multiplier,
+            duration: 0.3 + (0.3 * Double(multiplier)),  // Slower animations on lower quality
+            isAnimated: qualityLevel >= .medium,  // Disable animations on low quality
+            properties: [
+                "reducedEffects": qualityLevel < .medium,
+                "enhancedEffects": qualityLevel == .ultra,
+                "particleCount": Int(50.0 * multiplier),
+                "blurQuality": qualityLevel.rawValue,
+            ],
+            timing: CAMediaTimingFunction(name: .easeInEaseOut)
         )
-    }
-
-    private func generatePerformanceRecommendations() -> [String] {
-        var recommendations: [String] = []
-
-        if systemMetrics.frameRate < warningFrameRate {
-            recommendations.append("Consider reducing animation complexity or quality level")
-        }
-
-        if systemMetrics.memoryUsage > warningMemoryUsage {
-            recommendations.append("Memory usage is high, consider disabling some visual effects")
-        }
-
-        if systemMetrics.thermalState != .nominal {
-            recommendations.append("Device thermal state elevated, reducing quality automatically")
-        }
-
-        let errorLayers = layerMetrics.filter { $0.value.errorCount > 0 }
-        if !errorLayers.isEmpty {
-            recommendations.append("Some layers have errors, check system compatibility")
-        }
-
-        return recommendations
-    }
-}
-
-// MARK: - Performance Status & Report
-
-enum BLPerformanceStatus {
-    case good
-    case warning
-    case critical
-
-    var description: String {
-        switch self {
-        case .good:
-            return "Performance is optimal"
-        case .warning:
-            return "Performance impact detected"
-        case .critical:
-            return "Performance critically impacted"
-        }
-    }
-}
-
-struct BLPerformanceReport {
-    let frameRate: Double
-    let memoryUsage: Double
-    let cpuUsage: Double
-    let batteryImpact: Double
-    let thermalState: ProcessInfo.ThermalState
-    let activeAnimations: Int
-    let layerMetrics: [BLVisualLayerType: BLLayerMetrics]
-    let recommendations: [String]
-
-    var summary: String {
-        return """
-        Aurora Premium Performance Report:
-        - Frame Rate: \(String(format: "%.1f", frameRate)) FPS
-        - Memory Usage: \(String(format: "%.1f", memoryUsage)) MB
-        - CPU Usage: \(String(format: "%.1f", cpuUsage))%
-        - Battery Impact: \(String(format: "%.1f", batteryImpact))%
-        - Thermal State: \(thermalState)
-        - Active Animations: \(activeAnimations)
-        - Recommendations: \(recommendations.count)
-        """
     }
 }
