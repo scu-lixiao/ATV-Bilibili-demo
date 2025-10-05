@@ -14,11 +14,11 @@ import UIKit
 
 /// Performance quality level for adaptive degradation
 public enum BLPerformanceQualityLevel: Int, Comparable {
-    case ultra = 4    // 60fps, all effects enabled
-    case high = 3     // 50-60fps, full effects
-    case medium = 2   // 40-50fps, reduced particles
-    case low = 1      // 30-40fps, minimal effects
-    case minimal = 0  // <30fps, essential only
+    case ultra = 4 // 60fps, all effects enabled
+    case high = 3 // 50-60fps, full effects
+    case medium = 2 // 40-50fps, reduced particles
+    case low = 1 // 30-40fps, minimal effects
+    case minimal = 0 // <30fps, essential only
 
     public static func < (lhs: BLPerformanceQualityLevel, rhs: BLPerformanceQualityLevel) -> Bool {
         return lhs.rawValue < rhs.rawValue
@@ -79,7 +79,7 @@ public class BLPremiumPerformanceMonitor {
 
     /// Stability counter for quality changes
     private var stabilityCounter: Int = 0
-    private let stabilityThreshold: Int = 30  // 30 frames of stability required
+    private let stabilityThreshold: Int = 30 // 30 frames of stability required
 
     // MARK: - Initialization
 
@@ -183,7 +183,7 @@ public class BLPremiumPerformanceMonitor {
         }
 
         if kerr == KERN_SUCCESS {
-            memoryUsage = Double(info.resident_size) / 1024.0 / 1024.0  // Convert to MB
+            memoryUsage = Double(info.resident_size) / 1024.0 / 1024.0 // Convert to MB
         }
     }
 
@@ -213,15 +213,15 @@ public class BLPremiumPerformanceMonitor {
 
 // MARK: - Performance-Aware Configuration Extension
 
-extension BLLayerConfiguration {
+public extension BLLayerConfiguration {
     /// Create configuration adapted to current performance level
-    public static func adaptive(for qualityLevel: BLPerformanceQualityLevel) -> BLLayerConfiguration {
+    static func adaptive(for qualityLevel: BLPerformanceQualityLevel) -> BLLayerConfiguration {
         let multiplier = qualityLevel.qualityMultiplier
 
         return BLLayerConfiguration(
             intensity: multiplier,
-            duration: 0.3 + (0.3 * Double(multiplier)),  // Slower animations on lower quality
-            isAnimated: qualityLevel >= .medium,  // Disable animations on low quality
+            duration: 0.3 + (0.3 * Double(multiplier)), // Slower animations on lower quality
+            isAnimated: qualityLevel >= .medium, // Disable animations on low quality
             properties: [
                 "reducedEffects": qualityLevel < .medium,
                 "enhancedEffects": qualityLevel == .ultra,
