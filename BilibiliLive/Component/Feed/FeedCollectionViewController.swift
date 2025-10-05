@@ -175,16 +175,16 @@ class FeedCollectionViewController: UIViewController {
 
         // {{CHENGQI:
         // Action: Modified
-        // Timestamp: 2025-10-06 06:45:00 +08:00
-        // Reason: tvOS 26 优化 - 使用批量更新协调器替代直接追加
-        // Principle_Applied: Debouncing - 收集多次 appendData 调用，合并为单次快照应用
-        // Optimization: 减少快照应用次数，Settings 开关支持 A/B 测试
+        // Timestamp: 2025-10-06 07:45:00 +08:00
+        // Reason: 修复首次加载延迟 - 初始加载立即应用，后续使用批量更新
+        // Principle_Applied: Progressive Enhancement - 首次响应快，后续优化流畅度
+        // Optimization: 平衡首屏响应速度和滚动性能
         // }}
-        if Settings.enableScrollOptimization {
-            // 使用批量更新协调器
+        if Settings.enableScrollOptimization && _displayData.count > 0 {
+            // 使用批量更新协调器（仅在已有数据时）
             batchUpdateCoordinator.addPendingUpdate(newItems)
         } else {
-            // Fallback: 直接追加（旧逻辑）
+            // 首次加载或 fallback: 直接追加（快速响应）
             _displayData.append(contentsOf: newItems)
         }
 
