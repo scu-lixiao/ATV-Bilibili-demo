@@ -88,3 +88,84 @@ iOSInjectionProject/
 
 # End of https://www.toptal.com/developers/gitignore/api/swift
 fastlane/README.md
+
+# ========================================
+# Premium 2025: Sensitive Files Protection
+# ========================================
+
+# API Keys and Secrets
+*.key
+*.pem
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
+secrets.*
+.secrets/
+credentials.*
+.credentials/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Bilibili API Credentials
+**/Keys.swift
+**/APIKeys.swift
+**/BilibiliKeys.swift
+**/BilibiliCredentials.swift
+
+# Authentication Tokens
+token.txt
+*.token
+auth.*
+.auth/
+
+# Personal Development Certificates
+*.mobileprovision
+*.provisionprofile
+
+# Local Configuration
+config.local.*
+*.local.json
+*.local.plist
+
+# Database Files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs with Potential Sensitive Data
+*.log
+logs/
+crash_logs/
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Temporary Files
+*.swp
+*.swo
+*~
+.#*
+
+# IDE-specific (Beyond Xcode)
+.vscode/
+.idea/
+*.sublime-*
+
+# Cache Directories
+Cache/
+Caches/
+cache/
+
+# User-specific Data
+UserData/
+user_data/
+*.user
