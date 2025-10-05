@@ -247,7 +247,24 @@ public class BLPremiumPerformanceMonitor {
     }
 
     private func checkQualityAdaptation() {
-        let recommendedLevel = getRecommendedQualityLevel()
+        // {{CHENGQI:
+        // Action: Added
+        // Timestamp: 2025-10-06 08:00:00 +08:00
+        // Reason: 内存占用 300MB+ 超标，添加基于内存的质量降级
+        // Principle_Applied: Resource Management - 优先内存安全，其次 FPS
+        // Optimization: 内存阈值 (150MB→low, 200MB→minimal) 防止 SIGTERM
+        // }}
+        // Memory-based quality degradation (higher priority than FPS)
+        var recommendedLevel = getRecommendedQualityLevel()
+
+        // Override based on memory pressure
+        if memoryUsage > 200.0 {
+            recommendedLevel = .minimal // Critical: > 200MB
+        } else if memoryUsage > 150.0 {
+            recommendedLevel = min(recommendedLevel, .low) // High pressure: > 150MB
+        } else if memoryUsage > 100.0 {
+            recommendedLevel = min(recommendedLevel, .medium) // Moderate pressure: > 100MB
+        }
 
         // Only change quality if stable for threshold frames
         if recommendedLevel != currentQualityLevel {
@@ -255,11 +272,17 @@ public class BLPremiumPerformanceMonitor {
 
             if stabilityCounter >= stabilityThreshold {
                 // Quality level change confirmed
+                let oldLevel = currentQualityLevel
                 setQualityLevel(recommendedLevel)
                 stabilityCounter = 0
 
+                // Log memory-based degradation
+                if memoryUsage > 100.0 {
+                    print("[Aurora Premium] Memory-based degradation: \(memoryUsage)MB → Quality: \(recommendedLevel)")
+                }
+
                 // Notify performance degradation if quality dropped
-                if recommendedLevel < currentQualityLevel {
+                if recommendedLevel < oldLevel {
                     onPerformanceDegraded?(currentFPS)
                 }
             }

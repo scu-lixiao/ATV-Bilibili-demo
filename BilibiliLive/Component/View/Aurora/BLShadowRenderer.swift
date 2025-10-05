@@ -31,10 +31,17 @@ public class BLShadowRenderer {
     // MARK: - Cache Configuration
 
     /// 内存缓存 (L1)
+    /// {{CHENGQI:
+    /// Action: Modified
+    /// Timestamp: 2025-10-06 08:00:00 +08:00
+    /// Reason: 内存占用 300MB+ 超标，减少影子缓存限制
+    /// Principle_Applied: Resource Optimization - 平衡缓存命中率和内存占用
+    /// Optimization: countLimit 20→10, totalCostLimit 50MB→15MB
+    /// }}
     private static let memoryCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 20 // 最多缓存 20 个不同尺寸的阴影
-        cache.totalCostLimit = 50 * 1024 * 1024 // 50MB 内存限制
+        cache.countLimit = 10 // 最多缓存 10 个不同尺寸的阴影
+        cache.totalCostLimit = 15 * 1024 * 1024 // 15MB 内存限制
         return cache
     }()
 
