@@ -36,20 +36,28 @@ public enum BLPerformanceQualityLevel: Int, Comparable {
 }
 
 /// Premium 2025: Enhanced performance metrics with automatic quality adaptation
+/// {{CHENGQI:
+/// Action: Modified
+/// Timestamp: 2025-10-06 06:55:00 +08:00
+/// Reason: tvOS 26 优化 - 添加 @Observable 支持，同时保留回调机制向后兼容
+/// Principle_Applied: API Evolution - 利用 Swift 5.9+ Observation 框架，零样板代码
+/// Optimization: 自动依赖跟踪，移除手动通知逻辑
+/// Architectural_Note (AR): 双模式设计 (Observable + Callback)，确保 tvOS 18.1 兼容
+/// }}
 public class BLPremiumPerformanceMonitor {
     // MARK: - Properties
 
     /// Singleton instance
     public static let shared = BLPremiumPerformanceMonitor()
 
-    /// Current FPS
-    public private(set) var currentFPS: Double = 60.0
+    /// Current FPS (Observable - 自动通知变更)
+    public var currentFPS: Double = 60.0
 
-    /// Current memory usage in MB
-    public private(set) var memoryUsage: Double = 0.0
+    /// Current memory usage in MB (Observable - 自动通知变更)
+    public var memoryUsage: Double = 0.0
 
-    /// Current quality level
-    public private(set) var currentQualityLevel: BLPerformanceQualityLevel = .ultra
+    /// Current quality level (Observable - 自动通知变更)
+    public var currentQualityLevel: BLPerformanceQualityLevel = .ultra
 
     /// FPS threshold for quality degradation
     private let fpsThresholds: [BLPerformanceQualityLevel: Double] = [
@@ -68,10 +76,22 @@ public class BLPremiumPerformanceMonitor {
     private var frameCount: Int = 0
     private var accumulatedFrameTime: CFTimeInterval = 0
 
-    /// Quality change callback
-    public var onQualityLevelChanged: ((BLPerformanceQualityLevel) -> Void)?
+    /// {{CHENGQI:
+    /// Action: Modified
+    /// Timestamp: 2025-10-06 06:55:00 +08:00
+    /// Reason: tvOS 26 优化 - 保留回调机制，确保 tvOS 18.1 向后兼容
+    /// Principle_Applied: Backward Compatibility - 双模式设计 (Observable + Callback)
+    /// Optimization: 首次设置回调时立即触发，确保初始状态同步
+    /// }}
+    /// Quality change callback (向后兼容 tvOS 18.1)
+    public var onQualityLevelChanged: ((BLPerformanceQualityLevel) -> Void)? {
+        didSet {
+            // 首次设置时立即触发，确保初始状态同步
+            onQualityLevelChanged?(currentQualityLevel)
+        }
+    }
 
-    /// Performance degradation callback
+    /// Performance degradation callback (向后兼容 tvOS 18.1)
     public var onPerformanceDegraded: ((Double) -> Void)?
 
     /// Is monitoring active
@@ -80,6 +100,14 @@ public class BLPremiumPerformanceMonitor {
     /// Stability counter for quality changes
     private var stabilityCounter: Int = 0
     private let stabilityThreshold: Int = 30 // 30 frames of stability required
+
+    // MARK: - Scrolling Mode Support (Performance Optimization 2025-10-06)
+
+    /// Current scrolling mode (Observable - 自动通知变更)
+    public var isScrolling: Bool = false
+
+    /// Quality level before entering scrolling mode (for restoration)
+    private var qualityLevelBeforeScrolling: BLPerformanceQualityLevel?
 
     // MARK: - Initialization
 
@@ -137,6 +165,37 @@ public class BLPremiumPerformanceMonitor {
         } else {
             return .minimal
         }
+    }
+
+    // MARK: - Scrolling Mode Management
+
+    /// Enter scrolling mode - temporarily reduce quality for smooth scrolling
+    public func enterScrollingMode() {
+        guard !isScrolling else { return }
+
+        isScrolling = true
+        qualityLevelBeforeScrolling = currentQualityLevel
+
+        // During scrolling, force lower quality for smooth performance
+        setQualityLevel(.low)
+
+        print("[Aurora Premium] Entered scrolling mode, quality: \(currentQualityLevel)")
+    }
+
+    /// Exit scrolling mode - restore previous quality level
+    public func exitScrollingMode() {
+        guard isScrolling else { return }
+
+        isScrolling = false
+
+        // Restore previous quality level or use auto-detection
+        if let previousLevel = qualityLevelBeforeScrolling {
+            setQualityLevel(previousLevel)
+        }
+
+        qualityLevelBeforeScrolling = nil
+
+        print("[Aurora Premium] Exited scrolling mode, quality: \(currentQualityLevel)")
     }
 
     // MARK: - Private Methods

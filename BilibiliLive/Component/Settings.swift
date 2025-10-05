@@ -99,6 +99,24 @@ enum Settings {
     @UserDefault("Settings.arealimit.unlock", defaultValue: false)
     static var areaLimitUnlock: Bool
 
+    // Performance Optimization 2025-10-06: Scrolling optimization settings
+    @UserDefault("Settings.enableScrollOptimization", defaultValue: true)
+    static var enableScrollOptimization: Bool
+
+    @UserDefault("Settings.focusDebounceDelay", defaultValue: 0.15)
+    static var focusDebounceDelay: TimeInterval
+
+    // {{CHENGQI:
+    // Action: Added
+    // Timestamp: 2025-10-06 06:28:00 +08:00
+    // Reason: tvOS 26 优化总开关，方便 A/B 测试和性能对比
+    // Principle_Applied: Feature Toggle - 支持运行时动态开关优化功能
+    // Optimization: 默认启用，可快速回退到旧实现
+    // }}
+    // tvOS 26 Performance: Master optimization toggle
+    @UserDefault("Settings.enableTvOS26Optimizations", defaultValue: true)
+    static var enableTvOS26Optimizations: Bool
+
     @UserDefault("Settings.arealimit.customServer", defaultValue: "")
     static var areaLimitCustomServer: String
 
