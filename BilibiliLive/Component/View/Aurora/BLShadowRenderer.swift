@@ -145,19 +145,16 @@ public class BLShadowRenderer {
 
     /// 离屏渲染阴影 (L3)
     private static func renderShadowOffscreen(size: CGSize, radius: CGFloat, quality: BLPerformanceQualityLevel) -> UIImage {
-        // tvOS 18+ 优先使用 Metal 加速渲染
-        if #available(tvOS 18.0, *) {
-            if let metalImage = renderShadowWithMetal(size: size, radius: radius, quality: quality) {
-                return metalImage
-            }
+        // 优先使用 Metal 加速渲染
+        if let metalImage = renderShadowWithMetal(size: size, radius: radius, quality: quality) {
+            return metalImage
         }
 
         // Fallback: CoreGraphics 渲染
         return renderShadowWithCoreGraphics(size: size, radius: radius, quality: quality)
     }
 
-    /// Metal 加速渲染 (tvOS 18+)
-    @available(tvOS 18.0, *)
+    /// Metal 加速渲染
     private static func renderShadowWithMetal(size: CGSize, radius: CGFloat, quality _: BLPerformanceQualityLevel) -> UIImage? {
         // {{CHENGQI:
         // Action: Added

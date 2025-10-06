@@ -159,64 +159,15 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
 
     // MARK: - Performance Monitoring
 
-    /// {{CHENGQI:
-    /// Action: Modified
-    /// Timestamp: 2025-10-06 06:55:00 +08:00
-    /// Reason: tvOS 26 优化 - 添加 @Observable 跟踪支持，同时保留回调机制向后兼容
-    /// Principle_Applied: API Evolution - tvOS 17+ 使用 withObservationTracking，tvOS 18.1 使用回调
-    /// Optimization: 零样板代码，自动依赖跟踪，减少手动通知逻辑
-    /// Architectural_Note (AR): 双模式设计确保 tvOS 18.1 兼容性
-    /// }}
-    /// Setup performance monitoring (双模式：Observable + Callback)
+    /// Setup performance monitoring
     private func setupPerformanceMonitoring() {
-        if #available(tvOS 17.0, *) {
-            // tvOS 26: 使用 @Observable (零样板代码)
-            setupObservableTracking()
-        } else {
-            // tvOS 18.1: 使用回调 (向后兼容)
-            setupCallbackObservation()
-        }
-
-        // Apply initial quality level
-        currentQualityLevel = BLPremiumPerformanceMonitor.shared.currentQualityLevel
-        adaptToQualityLevel(currentQualityLevel)
-    }
-
-    /// {{CHENGQI:
-    /// Action: Added
-    /// Timestamp: 2025-10-06 06:55:00 +08:00
-    /// Reason: tvOS 26 优化 - 使用 withObservationTracking 自动跟踪性能变化
-    /// Principle_Applied: Observation Framework - 自动依赖跟踪，无需手动订阅
-    /// Optimization: onChange 闭包在依赖变化时自动触发，重新订阅确保持续跟踪
-    /// }}
-    /// Setup Observable tracking (tvOS 17+)
-    @available(tvOS 17.0, *)
-    private func setupObservableTracking() {
-        withObservationTracking {
-            // 自动跟踪依赖：currentQualityLevel
-            _ = BLPremiumPerformanceMonitor.shared.currentQualityLevel
-        } onChange: {
-            // 依赖变化时触发（在后台线程）
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                let newLevel = BLPremiumPerformanceMonitor.shared.currentQualityLevel
-                self.adaptToQualityLevel(newLevel)
-                self.setupObservableTracking() // 重新订阅，持续跟踪
-            }
-        }
-    }
-
-    /// {{CHENGQI:
-    /// Action: Added
-    /// Timestamp: 2025-10-06 06:55:00 +08:00
-    /// Reason: 向后兼容 tvOS 18.1 - 使用回调机制
-    /// Principle_Applied: Backward Compatibility - fallback 到传统回调模式
-    /// }}
-    /// Setup callback observation (tvOS 18.1 fallback)
-    private func setupCallbackObservation() {
+        // 使用回调机制监听质量变化
         BLPremiumPerformanceMonitor.shared.onQualityLevelChanged = { [weak self] newLevel in
             self?.adaptToQualityLevel(newLevel)
         }
+
+        // Apply initial quality level (onQualityLevelChanged will be triggered immediately)
+        currentQualityLevel = BLPremiumPerformanceMonitor.shared.currentQualityLevel
     }
 
     /// Adapt visual effects based on performance quality level
@@ -226,17 +177,12 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
         // {{CHENGQI:
         // Action: Modified
         // Timestamp: 2025-10-06 06:27:00 +08:00
-        // Reason: tvOS 26 阴影优化 - 低质量使用预渲染，高质量使用 CALayer
+        // Reason: 阴影优化 - 低质量使用预渲染，高质量使用 CALayer
         // Principle_Applied: SOLID - 策略模式，根据质量等级切换阴影实现
         // Optimization: 预渲染阴影 GPU 开销降低 15-25%
         // }}
-        // tvOS 26: Switch shadow strategy based on quality level
-        if Settings.enableTvOS26Optimizations {
-            switchShadowStrategy(for: level)
-        } else {
-            // Fallback: Original shadow logic
-            applyShadowRadiusLegacy(for: level)
-        }
+        // Switch shadow strategy based on quality level
+        switchShadowStrategy(for: level)
 
         // Performance Optimization 2025-10-06: Adjusted shadow quality
         switch level {
@@ -257,12 +203,6 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
             secondaryShadowLayer?.isHidden = true
             deepBackgroundLayer?.isHidden = true
         }
-    }
-
-    /// Legacy shadow radius adjustment (Fallback)
-    private func applyShadowRadiusLegacy(for _: BLPerformanceQualityLevel) {
-        // Original implementation - do nothing extra
-        // Shadow radius is already set in the switch statement above
     }
 
     /// Switch shadow rendering strategy based on quality level
@@ -409,15 +349,12 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
         // Optimization: 滚动中延长延迟（0.3s），停止后快速响应（0.15s）
         // }}
         // 改进：自适应 debounce 延迟
-        if isFocused && !isScrolling && Settings.enableScrollOptimization {
+        if isFocused && !isScrolling {
             let delay = adaptiveDebounceDelay()
             focusDebouncer.debounce(delay: delay) { [weak self] in
                 guard let self = self, self.isFocused && !self.isScrolling else { return }
                 self.applyFullFocusedEffects()
             }
-        } else if isFocused && !Settings.enableScrollOptimization {
-            // If optimization disabled, apply full effects immediately
-            applyFullFocusedEffects()
         }
     }
 

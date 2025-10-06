@@ -196,11 +196,11 @@ class FeedCollectionViewController: UIViewController {
         // Principle_Applied: Progressive Enhancement - 首次响应快，后续优化流畅度
         // Optimization: 平衡首屏响应速度和滚动性能
         // }}
-        if Settings.enableScrollOptimization && _displayData.count > 0 {
+        if _displayData.count > 0 {
             // 使用批量更新协调器（仅在已有数据时）
             batchUpdateCoordinator.addPendingUpdate(newItems)
         } else {
-            // 首次加载或 fallback: 直接追加（快速响应）
+            // 首次加载: 直接追加（快速响应）
             _displayData.append(contentsOf: newItems)
         }
 
