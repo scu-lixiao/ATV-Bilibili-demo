@@ -7,6 +7,7 @@
 
 import AVFoundation
 import CocoaLumberjackSwift
+import Kingfisher
 import UIKit
 
 @main
@@ -19,6 +20,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         CookieHandler.shared.restoreCookies()
         BiliBiliUpnpDMR.shared.start()
         URLSession.shared.configuration.headers.add(.userAgent("BiLiBiLi AppleTV Client/1.0.0 (github/yichengchen/ATV-Bilibili-live-demo)"))
+
+        // {{CHENGQI:
+        // Action: Added
+        // Timestamp: 2025-10-06 08:05:00 +08:00
+        // Reason: 内存占用 313MB 主要来自 Kingfisher 图片缓存，需要限制
+        // Principle_Applied: Resource Management - 平衡图片质量和内存占用
+        // Optimization: Memory 100MB→50MB, Disk 250MB 保持，Count 100→50
+        // }}
+        // Configure Kingfisher memory limits
+        let cache = ImageCache.default
+        cache.memoryStorage.config.totalCostLimit = 50 * 1024 * 1024 // 50MB (default: 100MB)
+        cache.memoryStorage.config.countLimit = 50 // 50 images (default: 100)
+        cache.diskStorage.config.sizeLimit = 250 * 1024 * 1024 // 250MB disk cache
+        Logger.debug("[Performance] Kingfisher cache limits: Memory 50MB, Disk 250MB, Count 50")
 
         // Performance Optimization: Start performance monitoring for adaptive quality
         BLPremiumPerformanceMonitor.shared.startMonitoring()
@@ -46,6 +61,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
             // Emergency actions
             BLShadowRenderer.clearAllCaches()
+            ImageCache.default.clearMemoryCache() // Clear Kingfisher memory cache
             BLPremiumPerformanceMonitor.shared.setQualityLevel(.minimal)
 
             // Log after cleanup
