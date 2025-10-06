@@ -175,6 +175,22 @@ class FeedCollectionViewController: UIViewController {
 
         // {{CHENGQI:
         // Action: Modified
+        // Timestamp: 2025-10-06 08:10:00 +08:00
+        // Reason: 内存占用 328MB - 限制 displayData 最大数量，防止无限增长
+        // Principle_Applied: Resource Management - 滚动窗口策略，保留最近数据
+        // Optimization: 最大 200 items，超出时移除最早的 50 items
+        // }}
+        // Memory protection: Limit total items to prevent unbounded growth
+        let maxItems = 200
+        let trimSize = 50
+        if _displayData.count + newItems.count > maxItems {
+            let removeCount = min(trimSize, _displayData.count)
+            _displayData.removeFirst(removeCount)
+            Logger.warn("[Memory] Trimmed \(removeCount) oldest items, new total: \(_displayData.count)")
+        }
+
+        // {{CHENGQI:
+        // Action: Modified
         // Timestamp: 2025-10-06 07:45:00 +08:00
         // Reason: 修复首次加载延迟 - 初始加载立即应用，后续使用批量更新
         // Principle_Applied: Progressive Enhancement - 首次响应快，后续优化流畅度
