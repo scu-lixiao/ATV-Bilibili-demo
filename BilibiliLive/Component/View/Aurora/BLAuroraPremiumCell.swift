@@ -250,10 +250,22 @@ class BLAuroraPremiumCell: BLMotionCollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
 
-        // Ensure Aurora components don't interfere with content visibility
-        // Alpha should always be 1.0 for content visibility
+        // Memory Optimization: Thoroughly cleanup Aurora components during cell reuse
+        // This prevents memory accumulation from visual effects
+
+        // Stop all animations first
+        animationController?.stopAllAnimations()
+        layerManager?.cleanup()
+
+        // Reset visual state
         contentView.alpha = 1.0
         alpha = 1.0
+
+        // Recreate components only when needed (lazy initialization)
+        layerManager = nil
+        animationController = nil
+
+        // Performance monitor continues running globally, no need to stop per cell
     }
 }
 
@@ -268,7 +280,7 @@ class DefaultConfigurationManager: BLConfigurationManagerProtocol {
 
 /// 默认动画控制器 - 提供基础动画功能
 class DefaultAnimationController: BLAnimationControllerProtocol {
-    func performFocusAnimation(isFocused: Bool, duration: TimeInterval, completion: (() -> Void)?) {
+    func performFocusAnimation(isFocused _: Bool, duration _: TimeInterval, completion: (() -> Void)?) {
         completion?()
     }
 
@@ -276,7 +288,7 @@ class DefaultAnimationController: BLAnimationControllerProtocol {
         // 基础实现
     }
 
-    func setAnimationQuality(_ quality: CGFloat) {
+    func setAnimationQuality(_: CGFloat) {
         // 基础实现
     }
 }

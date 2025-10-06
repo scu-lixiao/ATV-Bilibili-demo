@@ -28,12 +28,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Principle_Applied: Resource Management - 平衡图片质量和内存占用
         // Optimization: Memory 100MB→50MB, Disk 250MB 保持，Count 100→50
         // }}
-        // Configure Kingfisher memory limits
+        // Configure Kingfisher memory limits - Aggressive optimization
         let cache = ImageCache.default
-        cache.memoryStorage.config.totalCostLimit = 50 * 1024 * 1024 // 50MB (default: 100MB)
-        cache.memoryStorage.config.countLimit = 50 // 50 images (default: 100)
+        cache.memoryStorage.config.totalCostLimit = 30 * 1024 * 1024 // 30MB (reduced from 50MB)
+        cache.memoryStorage.config.countLimit = 30 // 30 images (reduced from 50)
         cache.diskStorage.config.sizeLimit = 250 * 1024 * 1024 // 250MB disk cache
-        Logger.debug("[Performance] Kingfisher cache limits: Memory 50MB, Disk 250MB, Count 50")
+        Logger.debug("[Performance] Kingfisher cache limits: Memory 30MB, Disk 250MB, Count 30")
 
         // Performance Optimization: Start performance monitoring for adaptive quality
         BLPremiumPerformanceMonitor.shared.startMonitoring()
