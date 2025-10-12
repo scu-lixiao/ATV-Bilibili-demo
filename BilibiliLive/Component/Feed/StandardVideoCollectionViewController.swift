@@ -13,6 +13,7 @@ protocol PlayableData: DisplayData {
 }
 
 class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, BLTabBarContentVCProtocol {
+    let focusToMenuView = FocusToMenuView()
     let collectionVC = FeedCollectionViewController()
     var lastReloadDate = Date()
     var reloadInterval: TimeInterval = 60 * 60
@@ -23,6 +24,7 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
     var didUpdateFocus: (() -> Void)?
     var didSelectToLastLeft: (() -> Void)?
     var isShowTopCover: (() -> Bool)?
+    var isNeedFocusToMenu: (() -> Bool)?
 
     override var preferredFocusEnvironments: [UIFocusEnvironment] {
         return [collectionVC.collectionView]
@@ -30,16 +32,33 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
 
     override func viewDidLoad() {
         collectionVC.isShowTopCover = isShowTopCover
-        
+
         super.viewDidLoad()
         setupCollectionView()
         collectionVC.show(in: self)
+        collectionVC.isToToped = {[weak self] isToped in
+            self?.focusToMenuView.isUserInteractionEnabled = !isToped
+        }
+        
         reloadData()
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
 
         collectionVC.backMenuAction = backMenuAction
         collectionVC.didUpdateFocus = didUpdateFocus
         collectionVC.didSelectToLastLeft = didSelectToLastLeft
+        
+        BLAfter(afterTime: 5) {
+            if self.isNeedFocusToMenu?() ?? false{
+                self.focusToMenuView.alpha = 1
+                self.view.addSubview(self.focusToMenuView)
+                self.focusToMenuView.snp.makeConstraints { make in
+                    make.left.equalToSuperview().offset(33)
+                    make.top.bottom.equalToSuperview()
+                    make.width.equalTo(1)
+                }
+            }
+            
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -75,7 +94,11 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
     func reloadData() {
         Task {
             await reallyReloadData()
+            reloadOtherRequest()
         }
+    }
+
+    func reloadOtherRequest() {
     }
 
     func reallyReloadData() async {

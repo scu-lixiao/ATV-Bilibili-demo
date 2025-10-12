@@ -40,8 +40,7 @@ extension UIView {
     func setBlurEffectView(style: UIBlurEffect.Style? = .regular,
                            cornerRadius: CGFloat? = 0,
                            cornerMask: CACornerMask? = nil,
-                           alpha: CGFloat = 1.0)
-    {
+                           alpha: CGFloat = 1.0) {
         let setStyle = style
         let eView = getblurEffectView(style: setStyle)
         eView.alpha = alpha
@@ -63,8 +62,7 @@ extension UIView {
         cornerMask: CACornerMask? = nil
     ) {
         if #available(tvOS 26.0, *) {
-            self.backgroundColor = .clear
-            let glassEffect = UIGlassEffect()
+            let glassEffect = UIGlassEffect(style: .clear)
             let effectView = UIVisualEffectView()
             self.insertSubview(effectView, at: 0)
             if let v = cornerRadius {
@@ -81,18 +79,26 @@ extension UIView {
         }
     }
 
-    func setGlassEffectView() {
-        if #available(tvOS 26.0, *) {
-            //            self.backgroundColor = .clear
-            let glassEffect = UIGlassEffect()
-            let effectView = UIVisualEffectView()
-            self.insertSubview(effectView, at: 0)
-            effectView.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
-            }
-
-            effectView.effect = glassEffect
+    @available(tvOS 26.0, *)
+    func setGlassEffectView(style: UIGlassEffect.Style,
+                            cornerRadius: CGFloat? = 0,
+                            cornerMask: CACornerMask? = nil,
+                            tintColor: UIColor? = nil) {
+        //            self.backgroundColor = .clear
+        let glassEffect = UIGlassEffect(style: style)
+        if tintColor != nil{
+            glassEffect.tintColor = tintColor
         }
+        let effectView = UIVisualEffectView()
+        insertSubview(effectView, at: 0)
+        if let v = cornerRadius {
+            effectView.cornerConfiguration = .corners(radius: .fixed(v))
+        }
+        effectView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+
+        effectView.effect = glassEffect
     }
 
     /// 设置圆角边框
@@ -109,8 +115,7 @@ extension UIView {
                          shadowRadius: CGFloat = 12,
                          shadowOffset: CGSize = CGSize(width: 0, height: 0),
                          shadowAlpha: CGFloat = 0.3,
-                         tag: Int? = 100)
-    {
+                         tag: Int? = 100) {
         // 圆角
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = true
@@ -191,8 +196,7 @@ extension UIView {
     func addShadow(shadowColor: UIColor = .black,
                    shadowOpacity: CGFloat = 1,
                    shadowRadius: CGFloat = 12,
-                   shadowOffset: CGSize = CGSize(width: 2, height: 12))
-    {
+                   shadowOffset: CGSize = CGSize(width: 2, height: 12)) {
         layer.shadowColor = shadowColor.cgColor
         layer.shadowOffset = shadowOffset
         layer.shadowRadius = shadowRadius
@@ -232,23 +236,4 @@ public extension UIView {
     @objc var height: CGFloat {
         return frame.size.height
     }
-}
-
-public func BLAnimate(withDuration: CGFloat, animations: @escaping () -> Void, completion: ((Bool) -> Void)? = nil) {
-    UIView.animate(withDuration: withDuration, delay: 0, options: .curveEaseIn, animations: animations, completion: completion)
-}
-
-public func BLAfter(afterTime: CGFloat, complete: @escaping () -> Void) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + afterTime, execute: {
-        complete()
-    })
-}
-
-public func getblurEffectView(style: UIBlurEffect.Style? = .light) -> UIVisualEffectView {
-    // 首先创建一个模糊效果
-    let blurEffect = UIBlurEffect(style: style!)
-    // 接着创建一个承载模糊效果的视图
-    let headView = UIVisualEffectView(effect: blurEffect)
-
-    return headView
 }

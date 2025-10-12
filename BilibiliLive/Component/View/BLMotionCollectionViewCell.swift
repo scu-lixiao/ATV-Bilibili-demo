@@ -11,7 +11,10 @@ import UIKit
 class BLMotionCollectionViewCell: UICollectionViewCell {
     private var motionEffectV: UIInterpolatingMotionEffect!
     private var motionEffectH: UIInterpolatingMotionEffect!
-    var scaleFactor: CGFloat = 1.04
+    var scaleFactor: CGFloat = 1.1
+
+    var didUpdateFocus: ((_ isFocused: Bool) -> Void)?
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setup()
@@ -46,16 +49,18 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
                 self.removeMotionEffect(self.motionEffectV)
             }
         }
+        didUpdateFocus?(isFocused)
     }
 
     func updateTransform() {
         if isFocused {
             transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor)
-            let scaleDiff = (bounds.size.height * scaleFactor - bounds.size.height) / 2
-            transform = CGAffineTransformTranslate(transform, 0, -scaleDiff)
+            //            let scaleDiff = (bounds.size.height * scaleFactor - bounds.size.height) / 2
+            //            transform = CGAffineTransformTranslate(transform, 0, -scaleDiff)
             layer.shadowOffset = CGSizeMake(0, 8)
             layer.shadowOpacity = 0.2
             layer.shadowRadius = 9.0
+
         } else {
             transform = CGAffineTransformIdentity
             layer.shadowOpacity = 0
