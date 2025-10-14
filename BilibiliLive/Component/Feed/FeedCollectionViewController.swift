@@ -49,7 +49,7 @@ struct AnyDispplayData: Hashable {
 }
 
 class FeedCollectionViewController: UIViewController {
-    var collectionView: BLCollectionView!
+    var collectionView: UICollectionView!
 
     private enum Section: CaseIterable {
         case main
@@ -68,8 +68,7 @@ class FeedCollectionViewController: UIViewController {
     var coverViewHeight = 500.0
     let collectionEdgeInsetTop = 40.0
     var isShowCove = false
-    var timer = Timer()
-    let coverView = BLCoverView()
+
     var nextFocusedIndexPath: IndexPath?
 
     let bgImageView = UIImageView()
@@ -114,6 +113,10 @@ class FeedCollectionViewController: UIViewController {
 
     // MARK: - Public
 
+    deinit {
+        print("🧹 FeedCollectionViewController deinitialized")
+    }
+    
     func show(in vc: UIViewController) {
         vc.addChild(self)
         vc.view.addSubview(view)
@@ -194,12 +197,12 @@ class FeedCollectionViewController: UIViewController {
             }
 
             // 内容
-            collectionView = BLCollectionView(frame: .zero, collectionViewLayout: makeCollectionViewLayout())
+            collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeCollectionViewLayout())
             view.addSubview(collectionView)
             collectionView.snp.makeConstraints { make in
                 make.left.right.equalToSuperview()
                 make.top.equalTo(bannerUIView!.snp.bottom).offset(animationOffSet)
-                make.height.equalTo(1080)
+                make.height.equalTo(1120)
             }
             collectionView.contentInset = UIEdgeInsets(top: collectionEdgeInsetTop, left: 0, bottom: 0, right: 0)
 
@@ -209,7 +212,7 @@ class FeedCollectionViewController: UIViewController {
 
         } else {
             // 内容
-            collectionView = BLCollectionView(frame: .zero, collectionViewLayout: makeCollectionViewLayout())
+            collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeCollectionViewLayout())
             view.addSubview(collectionView)
             collectionView.snp.makeConstraints { make in
                 make.edges.equalToSuperview()
@@ -219,16 +222,6 @@ class FeedCollectionViewController: UIViewController {
 
         collectionView.dataSource = dataSource
         collectionView.delegate = self
-
-        view.addSubview(coverView)
-        coverView.setBlurEffectView()
-        coverView.setCornerRadius(cornerRadius: bigSornerRadius)
-        coverView.snp.makeConstraints { make in
-            make.left.equalTo(48)
-            make.right.equalTo(-48)
-            make.height.equalTo(coverViewHeight)
-            make.bottom.equalTo(view).offset(coverViewHeight)
-        }
 
         NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_TOP, object: nil, queue: .main) { [weak self] _ in
             self?.handleMenuPress()
@@ -244,9 +237,6 @@ class FeedCollectionViewController: UIViewController {
             resetTopView()
         } else {
             NotificationCenter.default.post(name: EVENT_COLLECTION_TO_SHOW_MENU, object: nil)
-        }
-        if coverViewIsShowing {
-            hiddenCoverView()
         }
     }
 
@@ -324,45 +314,10 @@ class FeedCollectionViewController: UIViewController {
         DisplayCellRegistration { [weak self] cell, index, displayData in
             cell.styleOverride = self?.styleOverride
             cell.setup(data: displayData.data, indexPath: index)
-            cell.onLongPress = {
+            cell.onLongPress = { [weak self] in
                 self?.didLongPress?(displayData.data)
             }
         }
-    }
-
-    private func showCoverView(viewHeight: CGFloat? = 0, bottom: CGFloat? = -20, isListenBack: Bool? = true, withDuration: TimeInterval? = 0.4) {
-        if isListenBack! {
-            timer.invalidate()
-        }
-
-        setCoverView(indexPath: nextFocusedIndexPath!)
-        coverView.isHidden = false
-        UIView.animate(withDuration: withDuration!, delay: 0, options: .curveEaseOut) {
-            self.coverView.snp.updateConstraints { make in
-                make.bottom.equalTo(self.view).offset(bottom!)
-                make.height.equalTo(viewHeight! > 0 ? viewHeight! : self.coverViewHeight)
-            }
-            self.view.layoutIfNeeded()
-        } completion: { _ in
-            self.coverView.setCornerRadius(cornerRadius: bigSornerRadius, shadowColor: .black, shadowAlpha: 0.2, tag: 1001)
-            self.coverViewIsShowing = true
-        }
-    }
-
-    private func hiddenCoverView(completion: (() -> Void)? = nil) {
-        UIView.animate(withDuration: 0.4, delay: 0, options: .curveEaseOut) {
-            self.coverView.snp.updateConstraints { make in
-                make.bottom.equalTo(self.view).offset(self.coverViewHeight)
-                make.height.equalTo(self.coverViewHeight)
-            }
-            self.view.layoutIfNeeded()
-        } completion: { _ in
-            self.coverViewIsShowing = false
-        }
-    }
-
-    @objc func timerTimeout() {
-        showCoverView()
     }
 
     func scrollPositionToTop() {
@@ -435,7 +390,7 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
                     // 第二行把上面的全部隐藏
                     UIView.animate(springDuration: animateTime, bounce: 0.1) {
                         bannerUIView?.snp.updateConstraints { make in
-                            make.top.equalToSuperview().offset(-1120)
+                            make.top.equalToSuperview().offset(-1110)
                         }
 
                         collectionView.snp.updateConstraints { make in
@@ -467,44 +422,7 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
 
             // 焦点在第二行
             nextFocusedIndexPath = indexPath
-            guard isShowCove else {
-                return
-            }
-
-            if Settings.showCover {
-                if coverViewIsShowing {
-                    hiddenCoverView {}
-                } else {}
-
-                timer.invalidate()
-
-                BLAnimate(withDuration: 0.4) {
-                    self.timer = Timer.scheduledTimer(timeInterval: 5.0, target: self, selector: #selector(self.timerTimeout), userInfo: nil, repeats: true)
-
-                    self.view.layoutIfNeeded()
-                }
-            }
-        }
-    }
-
-    func setCoverView(indexPath: IndexPath) {
-        if let data = dataSource.itemIdentifier(for: indexPath) {
-            coverView.coverImageView.kf.setImage(with: data.data.pic, placeholder: nil, options: nil) { _ in
-            }
-
-            if let avatar = data.data.avatar {
-                coverView.headImage.kf.setImage(with: avatar)
-            } else {
-                coverView.headImage.image = UIImage(named: "Bili")
-            }
-            coverView.nameLabel.text = data.data.ownerName
-            if let date = data.data.date {
-                coverView.timeLabel.isHidden = false
-                coverView.timeLabel.text = "⌚️:\(date)"
-            } else {
-                coverView.timeLabel.isHidden = true
-            }
-            coverView.titleLabel.text = data.data.title
+  
         }
     }
 
@@ -522,30 +440,6 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
         }
         viewModel.offsetY = 0
         isToToped?(true)
-    }
-
-    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        super.pressesEnded(presses, with: event)
-
-        // 检测“左方向键”
-        guard presses.contains(where: { $0.type == .leftArrow }) else { return }
-
-        // 当前获得焦点的 view
-        guard let focused = UIScreen.main.focusedView as? UICollectionViewCell,
-              let indexPath = collectionView.indexPath(for: focused) else { return }
-
-        // 当前 item 是最左边？
-        let style = styleOverride ?? Settings.displayStyle
-
-        print("⬅️ indexPath.item = \(indexPath.item)")
-        if indexPath.item % style.feedColCount == 0 && beforeSeleteIndex == indexPath {
-            print("⬅️ 焦点在最左边，再按左键！")
-            // 👉 这里执行你想要的逻辑，比如：
-            // showPreviousPage()
-            // moveToLeftMenu()
-//            didSelectToLastLeft?()
-        }
-        beforeSeleteIndex = indexPath
     }
 }
 

@@ -18,9 +18,15 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
     private let upLabel = UILabel()
     private let sortLabel = UILabel()
     private let imageView = UIImageView()
+    private let imageViewParallax = UIImageView()
     let infoView = UIView()
     private let avatarView = UIImageView()
+    private var oldStyle: FeedDisplayStyle?
 
+    deinit {
+        print("🧹 FeedCollectionViewCell deinitialized")
+    }
+    
     override func setup() {
         super.setup()
         let longpress = UILongPressGestureRecognizer(target: self, action: #selector(actionLongPress(sender:)))
@@ -33,42 +39,51 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
             make.top.equalToSuperview()
             make.height.equalTo(imageView.snp.width).multipliedBy(9.0 / 16)
         }
-
-        let style = styleOverride ?? Settings.displayStyle
         
-        switch style.feedColCount {
-        case 3:
-            imageView.layer.cornerRadius = lessBigSornerRadius
-        case 4:
-            imageView.layer.cornerRadius = lessBigSornerRadius
-        case 5:
-            imageView.layer.cornerRadius = normailSornerRadius
-        default:
-            imageView.layer.cornerRadius = lessBigSornerRadius
-        }
-        imageView.clipsToBounds = true
-        imageView.contentMode = .scaleAspectFill
+//        contentView.addSubview(imageViewParallax)
+//        imageViewParallax.snp.makeConstraints { make in
+//            make.leading.equalToSuperview()
+//            make.trailing.equalToSuperview()
+//            make.top.equalToSuperview()
+//            make.height.equalTo(imageViewParallax.snp.width).multipliedBy(9.0 / 16)
+//        }
+//        
+//        imageViewParallax.image = UIImage(named: "cover")
+//        imageViewParallax.backgroundColor = .red
+        
+        imageView.adjustsImageWhenAncestorFocused = true
+        let style = styleOverride ?? Settings.displayStyle
+
+//        switch style.feedColCount {
+//        case 3:
+//            imageView.layer.cornerRadius = lessBigSornerRadius
+//        case 4:
+//            imageView.layer.cornerRadius = lessBigSornerRadius
+//        case 5:
+//            imageView.layer.cornerRadius = normailSornerRadius
+//        default:
+//            imageView.layer.cornerRadius = lessBigSornerRadius
+//        }
+//        imageView.layer.cornerCurve = .continuous
+//        imageView.layer.masksToBounds = true
+//        imageView.layer.shouldRasterize = true
+//        imageView.layer.rasterizationScale = UIScreen.main.scale
+//        imageView.contentMode = .scaleAspectFill
 
         imageView.addSubview(avatarView)
-
-//        sortLabel.alpha = 0.7
 
         infoView.alpha = 0.8
         contentView.addSubview(infoView)
         infoView.snp.makeConstraints { make in
             make.leading.trailing.bottom.equalToSuperview()
-            make.top.equalTo(imageView.snp.bottom).offset(8)
+            make.top.equalTo(imageView.snp.bottom).offset(14)
         }
 
         let hStackView = UIStackView()
         let stackView = UIStackView()
         infoView.addSubview(hStackView)
 
-//        hStackView.addArrangedSubview(avatarView)
         hStackView.addArrangedSubview(sortLabel)
-//        sortLabel.snp.makeConstraints { make in
-//            make.width.height.equalTo(70)
-//        }
         sortLabel.textColor = .white
 
         hStackView.addArrangedSubview(stackView)
@@ -81,7 +96,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         hStackView.alignment = .top
         hStackView.spacing = 10
         avatarView.backgroundColor = .clear
-        
+
         let aHeight: CGFloat = style == .large ? 44 : 33
         avatarView.snp.makeConstraints { make in
             make.bottom.right.equalToSuperview().offset(-4)
@@ -100,21 +115,18 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         stackView.alignment = .leading
         stackView.spacing = 6
         stackView.setContentHuggingPriority(.required, for: .vertical)
-//        titleLabel.holdScrolling = true
         titleLabel.numberOfLines = 2
         titleLabel.setContentHuggingPriority(.required, for: .vertical)
         titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         titleLabel.textColor = UIColor(named: "titleColor")
-
-//        titleLabel.fadeLength = 60
-
         upLabel.setContentHuggingPriority(.required, for: .vertical)
         upLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         upLabel.textColor = UIColor(named: "upTitleColor")
         upLabel.adjustsFontSizeToFitWidth = true
         upLabel.minimumScaleFactor = 0.1
     }
+   
 
     func setup(data: any DisplayData, indexPath: IndexPath? = nil) {
         titleLabel.text = data.title
@@ -142,30 +154,15 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         updateStyle()
     }
 
-//    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-//        super.didUpdateFocus(in: context, with: coordinator)
-//        if isFocused {
-//            startScroll()
-//        } else {
-//            stopScroll()
-//        }
-//    }
-//
-//    private func startScroll() {
-    ////        titleLabel.restartLabel()
-    ////        titleLabel.holdScrolling = false
-//    }
-//
-//    private func stopScroll() {
-    ////        titleLabel.shutdownLabel()
-    ////        titleLabel.holdScrolling = true
-//    }
-
     private func updateStyle() {
         let style = styleOverride ?? Settings.displayStyle
-        titleLabel.font = style.titleFont
-        upLabel.font = style.upFont
-        sortLabel.font = style.sortFont
+        if oldStyle != style {
+            titleLabel.font = style.titleFont
+            upLabel.font = style.upFont
+            sortLabel.font = style.sortFont
+        }
+
+        oldStyle = style
     }
 
     @objc private func actionLongPress(sender: UILongPressGestureRecognizer) {
@@ -175,9 +172,10 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        imageView.kf.cancelDownloadTask()
+        avatarView.kf.cancelDownloadTask()
         onLongPress = nil
         avatarView.image = nil
-//        stopScroll()
     }
 }
 

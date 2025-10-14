@@ -11,7 +11,7 @@ import UIKit
 class BLMotionCollectionViewCell: UICollectionViewCell {
     private var motionEffectV: UIInterpolatingMotionEffect!
     private var motionEffectH: UIInterpolatingMotionEffect!
-    var scaleFactor: CGFloat = 1.1
+    var scaleFactor: CGFloat = 1
 
     var didUpdateFocus: ((_ isFocused: Bool) -> Void)?
 
@@ -32,6 +32,7 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
         motionEffectH = UIInterpolatingMotionEffect(keyPath: "center.x", type: .tiltAlongHorizontalAxis)
         motionEffectH.maximumRelativeValue = 8
         motionEffectH.minimumRelativeValue = -8
+        
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {

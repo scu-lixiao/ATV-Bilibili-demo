@@ -5,6 +5,7 @@
 //  Created by iManTie on 10/11/25.
 //
 
+import Kingfisher
 import SwiftUI
 
 enum FocusItem {
@@ -41,7 +42,7 @@ struct BannerView: View {
                 .frame(width: 1920)
                 .scrollTargetBehavior(.paging)
                 .onChange(of: viewModel.currentIndex) { _, newValue in
-                    withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) {
+                    withAnimation(.easeInOut(duration: 0.8)) {
                         proxy.scrollTo(newValue, anchor: .center)
                     } completion: {
                         BLAfter(afterTime: 1) {
@@ -85,9 +86,7 @@ struct BannerView: View {
             .focused($focusedItem, equals: .focusGuide) // 与 @FocusState 绑定
             .opacity(0)
             .padding(.leading, 400)
-            .onChange(of: focusedItem) { old, new in
-
-                print("focusedItem \(old)--\(new)")
+            .onChange(of: focusedItem) { _, _ in
                 viewModel.focusedBannerButton?()
                 if focusedItem == .focusGuide
                     || focusedItem == .leftGuide {
@@ -160,8 +159,7 @@ struct infoView: View {
     var body: some View {
         // 信息页面
         VStack(alignment: .leading, spacing: 12) {
-
-            //标题
+            // 标题
             if viewModel.isAnimate {
                 let visualEffects = Text(viewModel.selectData?.title ?? "")
                     .customAttribute(EmphasisAttribute())
@@ -184,22 +182,19 @@ struct infoView: View {
                     )
                     .frame(maxWidth: 650, maxHeight: 140, alignment: .leading)
                     .transition(TextTransition())
+                    .id(viewModel.selectData?.title)
             }
 
-            //作者 和 介绍
+            // 作者 和 介绍
             VStack(alignment: .leading) {
                 HStack(spacing: 12) {
-                    AsyncImage(url: URL(string: viewModel.selectData?.upper.face ?? "")) { image in
-                        image
-                            .resizable()
-                            .frame(width: 34, height: 34)
-                            .cornerRadius(17)
-                            .scaledToFill()
-                            .clipped()
-                    } placeholder: {
-                        //                            ProgressView()
-                        //                                .background(Color.black)
-                    }
+                    KFImage(URL(string: viewModel.selectData?.upper.face ?? ""))
+                        .resizable()
+                        .fade(duration: 0.2)
+                        .frame(width: 34, height: 34)
+                        .cornerRadius(17)
+                        .scaledToFill()
+                        .clipped()
 
                     Text(viewModel.selectData?.upper.name ?? "")
                         .foregroundStyle(.white)
@@ -295,16 +290,12 @@ struct ItemPhoto: View {
     }
 
     var body: some View {
-        AsyncImage(url: URL(string: photo.title)) { image in
-            image
-                .resizable()
-                .scaledToFill()
-                .clipped()
-        } placeholder: {
-        }
-        .frame(width: 1920, height: 1080)
-//            .ignoresSafeArea()
-//            .focusable(true)
+        KFImage(URL(string: photo.title))
+            .resizable()
+            .fade(duration: 0.2)
+            .scaledToFill()
+            .frame(width: 1920, height: 1080)
+            .clipped()
     }
 }
 

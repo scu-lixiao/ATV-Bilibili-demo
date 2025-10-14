@@ -26,6 +26,10 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
     var isShowTopCover: (() -> Bool)?
     var isNeedFocusToMenu: (() -> Bool)?
 
+    deinit {
+        print("🧹 StandardVideoCollectionViewController deinitialized")
+    }
+    
     override var preferredFocusEnvironments: [UIFocusEnvironment] {
         return [collectionVC.collectionView]
     }

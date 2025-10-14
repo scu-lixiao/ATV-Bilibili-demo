@@ -176,6 +176,10 @@ class VideoDetailViewController: UIViewController {
         return vc
     }
 
+    deinit {
+        print("🧹 VideoDetailViewController deinitialized")
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         Task { await fetchData() }
