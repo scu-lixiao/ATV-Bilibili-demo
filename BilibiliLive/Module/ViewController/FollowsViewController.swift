@@ -34,6 +34,10 @@ class FollowsViewController: StandardVideoCollectionViewController<DynamicFeedDa
         let detailVC = VideoDetailViewController.create(aid: feed.aid, cid: feed.cid, epid: epid)
         detailVC.present(from: self)
     }
+
+    override func reloadOtherRequest() {
+        collectionVC.reloadData()
+    }
 }
 
 extension WebRequest {

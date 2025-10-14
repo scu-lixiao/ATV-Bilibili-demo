@@ -73,7 +73,7 @@ class BLCustomButton: BLButton {
             } else {
                 titleLabel.snp.makeConstraints { make in
                     make.leading.trailing.bottom.equalToSuperview()
-                    make.top.equalTo(effectView.snp.bottom).offset(10)
+                    make.top.equalTo(effectView.snp.bottom).offset(4)
                 }
             }
         }
@@ -174,6 +174,8 @@ class BLButton: UIControl {
 
     fileprivate var effectView = UIVisualEffectView()
     private let selectedWhiteView = UIView()
+    
+    var cornerRadius:CGFloat = 0
 
     var action: ((_ isFocused: Bool) -> Void)?
 
@@ -192,7 +194,15 @@ class BLButton: UIControl {
     override var canBecomeFocused: Bool { return true }
 
     func setup() {
-        effectView.effect = UIBlurEffect(style: .extraDark)
+        
+        if #available(tvOS 26.0, *) {
+            
+            let glassEffect = UIGlassEffect(style: .clear)
+            effectView.effect = glassEffect
+        } else {
+            effectView.effect = UIBlurEffect(style: .extraDark)
+        }
+        
 
         isUserInteractionEnabled = true
         motionEffect = UIInterpolatingMotionEffect(keyPath: "center.x", type: .tiltAlongHorizontalAxis)
@@ -208,7 +218,7 @@ class BLButton: UIControl {
             make.bottom.equalToSuperview().priority(.high)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.effectView.layer.cornerRadius = self.effectView.height / 2
+            self.effectView.layer.cornerRadius = self.getCornerRadius()
         }
 
         effectView.contentView.addSubview(selectedWhiteView)
@@ -216,6 +226,11 @@ class BLButton: UIControl {
         selectedWhiteView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
+        
+    }
+    
+    private func getCornerRadius() -> CGFloat {
+        return cornerRadius>0 ? cornerRadius : self.effectView.height / 2
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
@@ -249,5 +264,10 @@ class BLButton: UIControl {
                 self.removeMotionEffect(self.motionEffect)
             }
         }
+    }
+    
+    func setTansform(x sx: CGFloat?=1.1, y sy: CGFloat?=1.1){
+        self.alpha = 0
+        self.transform = CGAffineTransform(translationX: 0, y: 0).scaledBy(x: sx!, y: sy!)
     }
 }

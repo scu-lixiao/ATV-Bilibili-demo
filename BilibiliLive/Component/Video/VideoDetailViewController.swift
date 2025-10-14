@@ -18,6 +18,7 @@ import TVUIKit
 
 class VideoDetailViewController: UIViewController {
     private let animateTime = 0.8
+    private let infoEffectViewCornerRadius: CGFloat = 54
     private var isCoveImageToToped: Bool = false
     private var loadingView = UIActivityIndicatorView()
     @IBOutlet var backgroundImageView: UIImageView!
@@ -37,6 +38,7 @@ class VideoDetailViewController: UIViewController {
             playButton.action = { [weak self] isFocused in
                 self?.toTopContent(isFocused: isFocused)
             }
+            playButton.cornerRadius = 34
         }
     }
 
@@ -45,6 +47,8 @@ class VideoDetailViewController: UIViewController {
             likeButton.action = { [weak self] isFocused in
                 self?.toTopContent(isFocused: isFocused)
             }
+            likeButton.cornerRadius = 34
+            likeButton.setTansform(x: 1.1, y: 1.1)
         }
     }
 
@@ -53,24 +57,31 @@ class VideoDetailViewController: UIViewController {
             coinButton.action = { [weak self] isFocused in
                 self?.toTopContent(isFocused: isFocused)
             }
+            coinButton.cornerRadius = 34
+            coinButton.setTansform(x: 1.2, y: 1.2)
         }
     }
-
-    @IBOutlet var dislikeButton: BLCustomButton! {
-        didSet {
-            dislikeButton.action = { [weak self] isFocused in
-                self?.toTopContent(isFocused: isFocused)
-            }
-        }
-    }
-
+    
     @IBOutlet var favButton: BLCustomButton! {
         didSet {
             favButton.action = { [weak self] isFocused in
                 self?.toTopContent(isFocused: isFocused)
             }
+            favButton.cornerRadius = 34
+            favButton.setTansform(x: 1.3, y: 1.3)
         }
     }
+    
+    @IBOutlet var dislikeButton: BLCustomButton! {
+        didSet {
+            dislikeButton.action = { [weak self] isFocused in
+                self?.toTopContent(isFocused: isFocused)
+            }
+            dislikeButton.cornerRadius = 34
+            dislikeButton.setTansform(x: 1.4, y: 1.4)
+        }
+    }
+
 
     @IBOutlet var noteView: NoteDetailView!
     @IBOutlet var noteViewHeight: NSLayoutConstraint!
@@ -125,6 +136,16 @@ class VideoDetailViewController: UIViewController {
         }
     }
 
+    @IBOutlet var infoVisualEffectView: UIVisualEffectView! {
+        didSet {
+            infoVisualEffectView.layer.cornerRadius = infoEffectViewCornerRadius
+            if #available(tvOS 26.0, *) {
+                infoVisualEffectView.effect = UIGlassEffect(style: .clear)
+               
+            }
+        }
+    }
+
     private var isBangumi = false
     private var startTime = 0
     private var pages = [VideoPage]()
@@ -155,6 +176,10 @@ class VideoDetailViewController: UIViewController {
         return vc
     }
 
+    deinit {
+        print("🧹 VideoDetailViewController deinitialized")
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         Task { await fetchData() }
@@ -195,6 +220,49 @@ class VideoDetailViewController: UIViewController {
 //            self?.repliesCollectionViewHeightConstraints.constant = newSize.height
             self?.view.setNeedsLayout()
         }.store(in: &subscriptions)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+//        animateSequentially([
+//            {
+//                self.playButton.alpha = 1
+//                self.playButton.transform = .identity
+//            },
+//
+//            {
+//                self.likeButton.alpha = 1
+//                self.likeButton.transform = .identity
+//            },
+//
+//            {
+//                self.coinButton.alpha = 1
+//                self.coinButton.transform = .identity
+//            },
+//
+//            {
+//                self.favButton.alpha = 1
+//                self.favButton.transform = .identity
+//            },
+//
+//            {
+//                self.dislikeButton.alpha = 1
+//                self.dislikeButton.transform = .identity
+//            },
+//        ])
+        
+        UIView.animate(springDuration: 0.6, bounce: 0.3) {
+           
+            self.likeButton.alpha = 1
+            self.likeButton.transform = .identity
+            self.coinButton.alpha = 1
+            self.coinButton.transform = .identity
+            self.favButton.alpha = 1
+            self.favButton.transform = .identity
+            self.dislikeButton.alpha = 1
+            self.dislikeButton.transform = .identity
+        }
     }
 
     private func toTopContent(isFocused: Bool) {
@@ -579,7 +647,7 @@ extension VideoDetailViewController: UICollectionViewDelegate {
         if #available(tvOS 17.0, *) {
             UIView.animate(springDuration: self.animateTime) {
                 if isAnimateToTop {
-                    self.coverImageViewTop.constant = -640
+                    self.coverImageViewTop.constant = -630
                     self.topInfoViewHeight.constant = 420
                 } else {
                     self.topInfoViewHeight.constant = 820
@@ -709,16 +777,17 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
         contentView.addSubview(titleLabel)
         imageView.snp.makeConstraints { make in
             make.top.left.right.equalToSuperview()
-            make.width.equalTo(imageView.snp.height).multipliedBy(14.0 / 9)
+            make.width.equalTo(imageView.snp.height).multipliedBy(16.0 / 9)
         }
-        imageView.layer.cornerRadius = normailSornerRadius
-        imageView.clipsToBounds = true
-        imageView.contentMode = .scaleAspectFill
+//        imageView.layer.cornerRadius = normailSornerRadius
+//        imageView.clipsToBounds = true
+//        imageView.contentMode = .scaleAspectFill
+        imageView.adjustsImageWhenAncestorFocused = true
         titleLabel.snp.makeConstraints { make in
             make.left.equalToSuperview().offset(12)
             make.right.equalToSuperview().offset(-12)
             make.bottom.equalToSuperview()
-            make.top.equalTo(imageView.snp.bottom).offset(6)
+            make.top.equalTo(imageView.snp.bottom).offset(18)
         }
         titleLabel.setContentHuggingPriority(.required, for: .vertical)
 
@@ -819,7 +888,7 @@ class NoteDetailView: UIControl {
         addSubview(label)
         label.numberOfLines = 0
         label.font = UIFont.systemFont(ofSize: 18)
-        label.textColor = .gray
+        label.textColor = .lightGray
         label.textAlignment = .left
         label.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview()

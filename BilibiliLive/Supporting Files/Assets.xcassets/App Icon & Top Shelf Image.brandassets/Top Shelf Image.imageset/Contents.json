@@ -1,12 +1,12 @@
 {
   "images" : [
     {
-      "filename" : "Artboard.png",
+      "filename" : "Artboard@2x@0.5x.jpg",
       "idiom" : "tv",
       "scale" : "1x"
     },
     {
-      "filename" : "Artboard@2x.png",
+      "filename" : "Artboard@2x@1x.jpg",
       "idiom" : "tv",
       "scale" : "2x"
     }
