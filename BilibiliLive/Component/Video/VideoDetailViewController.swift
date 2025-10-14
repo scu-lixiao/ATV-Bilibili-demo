@@ -777,16 +777,17 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
         contentView.addSubview(titleLabel)
         imageView.snp.makeConstraints { make in
             make.top.left.right.equalToSuperview()
-            make.width.equalTo(imageView.snp.height).multipliedBy(14.0 / 9)
+            make.width.equalTo(imageView.snp.height).multipliedBy(16.0 / 9)
         }
-        imageView.layer.cornerRadius = normailSornerRadius
-        imageView.clipsToBounds = true
-        imageView.contentMode = .scaleAspectFill
+//        imageView.layer.cornerRadius = normailSornerRadius
+//        imageView.clipsToBounds = true
+//        imageView.contentMode = .scaleAspectFill
+        imageView.adjustsImageWhenAncestorFocused = true
         titleLabel.snp.makeConstraints { make in
             make.left.equalToSuperview().offset(12)
             make.right.equalToSuperview().offset(-12)
             make.bottom.equalToSuperview()
-            make.top.equalTo(imageView.snp.bottom).offset(6)
+            make.top.equalTo(imageView.snp.bottom).offset(18)
         }
         titleLabel.setContentHuggingPriority(.required, for: .vertical)
 
