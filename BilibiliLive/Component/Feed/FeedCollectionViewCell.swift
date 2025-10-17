@@ -20,6 +20,10 @@ class FeedCollectionViewCell: BLAuroraPremiumCell {
     private let infoView = UIView()
     private let avatarView = UIImageView()
 
+    // Performance Optimization: Cache current image URL to avoid redundant loads
+    private var currentImageURL: URL?
+    private var currentAvatarURL: URL?
+
     override func setupCell() {
         super.setupCell()
         let longpress = UILongPressGestureRecognizer(target: self, action: #selector(actionLongPress(sender:)))
@@ -84,19 +88,66 @@ class FeedCollectionViewCell: BLAuroraPremiumCell {
 
     func setup(data: any DisplayData) {
         titleLabel.text = data.title
-        upLabel.text = [data.ownerName, data.date].compactMap({ $0 }).joined(separator: " · ")
+        upLabel.text = [data.ownerName, data.date].compactMap { $0 }.joined(separator: " · ")
+
+        // Performance Optimization: Load image only if URL changed
         if var pic = data.pic {
             if pic.scheme == nil {
                 pic = URL(string: "http:\(pic.absoluteString)")!
             }
-            imageView.kf.setImage(with: pic, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 360, height: 202))), .cacheOriginalImage])
+
+            // Only load if URL is different from current
+            if currentImageURL != pic {
+                currentImageURL = pic
+
+                // Disable transition animation on low performance
+                let shouldTransition = BLPremiumPerformanceMonitor.shared.currentQualityLevel >= .medium
+                let transition: KingfisherOptionsInfoItem = shouldTransition ? .transition(.fade(0.2)) : .transition(.none)
+
+                // {{CHENGQI:
+                // Action: Modified
+                // Timestamp: 2025-10-17 08:08:00 +08:00
+                // Reason: Phase 2 内存优化 - 移除 .cacheOriginalImage (最大收益点!)
+                // Principle_Applied: Resource Management - Feed 大图无需缓存原图
+                // Optimization: 避免缓存 1920x1080 原图,只保留 360x202 下采样图
+                // Impact: 预期减少 30-40MB 内存 (原图占用)
+                // }}
+                imageView.kf.setImage(
+                    with: pic,
+                    options: [
+                        .processor(DownsamplingImageProcessor(size: CGSize(width: 360, height: 202))),
+                        // .cacheOriginalImage removed - Feed images don't need original quality
+                        transition,
+                    ]
+                )
+            }
         }
+
+        // Performance Optimization: Load avatar only if URL changed
         if let avatar = data.avatar {
             avatarView.isHidden = false
-            avatarView.kf.setImage(with: avatar, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))), .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))), .cacheSerializer(FormatIndicatedCacheSerializer.png)])
+
+            if currentAvatarURL != avatar {
+                currentAvatarURL = avatar
+
+                let shouldTransition = BLPremiumPerformanceMonitor.shared.currentQualityLevel >= .medium
+                let transition: KingfisherOptionsInfoItem = shouldTransition ? .transition(.fade(0.2)) : .transition(.none)
+
+                avatarView.kf.setImage(
+                    with: avatar,
+                    options: [
+                        .processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))),
+                        .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))),
+                        .cacheSerializer(FormatIndicatedCacheSerializer.png),
+                        transition,
+                    ]
+                )
+            }
         } else {
             avatarView.isHidden = true
+            currentAvatarURL = nil
         }
+
         updateStyle()
     }
 
@@ -135,6 +186,21 @@ class FeedCollectionViewCell: BLAuroraPremiumCell {
         onLongPress = nil
         avatarView.image = nil
         stopScroll()
+
+        // Performance Optimization: Reset URL cache
+        currentImageURL = nil
+        currentAvatarURL = nil
+
+        // {{CHENGQI:
+        // Action: Added
+        // Timestamp: 2025-10-17 08:10:30 +08:00
+        // Reason: Phase 4 内存优化 - prepareForReuse 时取消图片下载
+        // Principle_Applied: Resource Management - 复用前清理资源
+        // Optimization: 配合 didEndDisplaying,确保图片任务及时取消
+        // }}
+        // Cancel any ongoing Kingfisher download tasks
+        imageView.kf.cancelDownloadTask()
+        avatarView.kf.cancelDownloadTask()
 
         // Fix: Reset all visual states to prevent gray-out
         contentView.alpha = 1.0

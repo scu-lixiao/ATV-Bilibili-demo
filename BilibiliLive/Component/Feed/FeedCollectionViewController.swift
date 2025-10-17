@@ -439,6 +439,19 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
         loadMore?()
     }
 
+    // {{CHENGQI:
+    // Action: Added
+    // Timestamp: 2025-10-17 08:10:00 +08:00
+    // Reason: Phase 4 内存优化 - didEndDisplaying 触发 cell 清理
+    // Principle_Applied: Resource Management - 利用 UICollectionView 生命周期
+    // Optimization: 配合 prepareForReuse,确保图片任务及时取消
+    // Note: 实际取消逻辑在 FeedCollectionViewCell.prepareForReuse() 中实现
+    // }}
+    func collectionView(_: UICollectionView, didEndDisplaying _: UICollectionViewCell, forItemAt _: IndexPath) {
+        // Cell cleanup is handled in prepareForReuse()
+        // This method is kept for potential future optimizations
+    }
+
     // MARK: - Scrolling State Management (Performance Optimization 2025-10-06)
 
     private func updateScrollingState(_ state: BLScrollingState) {

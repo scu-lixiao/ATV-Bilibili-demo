@@ -28,16 +28,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Principle_Applied: Resource Management - 平衡图片质量和内存占用
         // Optimization: Memory 100MB→50MB, Disk 250MB 保持，Count 100→50
         // }}
-        // Configure Kingfisher memory limits - Aggressive optimization
+        // {{CHENGQI:
+        // Action: Modified
+        // Timestamp: 2025-10-17 08:07:30 +08:00
+        // Reason: Phase 1 内存优化 - 进一步压缩内存缓存限制
+        // Principle_Applied: Resource Management - 平衡缓存命中率和内存占用
+        // Optimization: Memory 30MB→20MB, Count 30→25 (预期减少 10MB)
+        // }}
+        // Configure Kingfisher memory limits - Ultra-aggressive optimization
         let cache = ImageCache.default
-        cache.memoryStorage.config.totalCostLimit = 30 * 1024 * 1024 // 30MB (reduced from 50MB)
-        cache.memoryStorage.config.countLimit = 30 // 30 images (reduced from 50)
+        cache.memoryStorage.config.totalCostLimit = 20 * 1024 * 1024 // 20MB (Phase 1 optimization)
+        cache.memoryStorage.config.countLimit = 25 // 25 images (Phase 1 optimization)
         cache.diskStorage.config.sizeLimit = 250 * 1024 * 1024 // 250MB disk cache
-        Logger.debug("[Performance] Kingfisher cache limits: Memory 30MB, Disk 250MB, Count 30")
+        Logger.debug("[Performance] Kingfisher cache limits: Memory 20MB, Disk 250MB, Count 25")
 
         // Performance Optimization: Start performance monitoring for adaptive quality
         BLPremiumPerformanceMonitor.shared.startMonitoring()
         Logger.debug("[Performance] Performance monitoring started")
+
+        // {{CHENGQI:
+        // Action: Added
+        // Timestamp: 2025-10-17 08:09:00 +08:00
+        // Reason: Phase 3 内存优化 - 启动主动内存压力监控
+        // Principle_Applied: Proactive Management - 在系统 warning 前主动清理
+        // Optimization: 每 3 秒检查内存,分级清理 (150MB/180MB/200MB)
+        // }}
+        // Memory Pressure Monitoring: Proactive cleanup before system warnings
+        BLMemoryPressureManager.shared.startMonitoring()
+        Logger.debug("[Performance] Memory pressure monitoring started")
 
         // {{CHENGQI:
         // Action: Added
