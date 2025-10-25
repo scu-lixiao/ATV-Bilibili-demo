@@ -103,11 +103,97 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        if isFocused {
-            startScroll()
-        } else {
-            stopScroll()
-        }
+
+        coordinator.addCoordinatedAnimations({
+            if self.isFocused {
+                // 焦点效果 - tvOS 26 Liquid Glass 风格
+                self.applyFocusedStyle()
+                self.startScroll()
+            } else {
+                // 失焦效果
+                self.applyUnfocusedStyle()
+                self.stopScroll()
+            }
+        }, completion: nil)
+    }
+
+    /// 应用焦点样式 - 深邃暗黑主题焦点效果
+    private func applyFocusedStyle() {
+        // 1. 缩放效果 - 轻微放大
+        transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+
+        // 2. 高级阴影 - 深邃且柔和
+        layer.shadowColor = ColorPalette.focusShadow.cgColor
+        layer.shadowOpacity = 0.8
+        layer.shadowOffset = CGSize(width: 0, height: 8)
+        layer.shadowRadius = 24
+        layer.shadowPath = UIBezierPath(
+            roundedRect: bounds,
+            cornerRadius: 12
+        ).cgPath
+
+        // 3. 图片容器边框高光 - 品牌色
+        imageView.layer.borderColor = ThemeManager.shared.accentColor.cgColor
+        imageView.layer.borderWidth = 3
+
+        // 4. 图片增强 - 轻微提亮,不添加模糊
+        imageView.alpha = 1.0
+        imageView.layer.shadowColor = ThemeManager.shared.accentColor.cgColor
+        imageView.layer.shadowOpacity = 0.3
+        imageView.layer.shadowOffset = CGSize(width: 0, height: 0)
+        imageView.layer.shadowRadius = 8
+
+        // 5. 文本颜色增强
+        titleLabel.textColor = ThemeManager.shared.textPrimaryColor
+        upLabel.textColor = ThemeManager.shared.accentColor
+
+        // 6. 轻微的边缘发光效果(不遮挡图片)
+        applyGlowEffect()
+    }
+
+    /// 移除焦点样式
+    private func applyUnfocusedStyle() {
+        // 1. 恢复原始大小
+        transform = .identity
+
+        // 2. 移除卡片阴影
+        layer.shadowOpacity = 0
+
+        // 3. 移除图片边框
+        imageView.layer.borderWidth = 0
+
+        // 4. 恢复图片阴影
+        imageView.layer.shadowOpacity = 0
+
+        // 5. 恢复正常文本颜色
+        titleLabel.textColor = ThemeManager.shared.textPrimaryColor
+        upLabel.textColor = ThemeManager.shared.textSecondaryColor
+
+        // 6. 移除发光效果
+        removeGlowEffect()
+    }
+
+    /// 应用轻微的发光效果 - 不遮挡图片
+    private func applyGlowEffect() {
+        // 为卡片容器添加内发光效果(不影响 imageView 内容)
+        let glowLayer = CALayer()
+        glowLayer.name = "glowLayer"
+        glowLayer.frame = bounds
+        glowLayer.cornerRadius = 12
+        glowLayer.borderColor = ThemeManager.shared.accentColor.withAlphaComponent(0.3).cgColor
+        glowLayer.borderWidth = 1
+        glowLayer.shadowColor = ThemeManager.shared.accentColor.cgColor
+        glowLayer.shadowOpacity = 0.5
+        glowLayer.shadowOffset = .zero
+        glowLayer.shadowRadius = 12
+
+        // 插入到底层,不遮挡任何内容
+        layer.insertSublayer(glowLayer, at: 0)
+    }
+
+    /// 移除发光效果
+    private func removeGlowEffect() {
+        layer.sublayers?.first(where: { $0.name == "glowLayer" })?.removeFromSuperlayer()
     }
 
     private func startScroll() {

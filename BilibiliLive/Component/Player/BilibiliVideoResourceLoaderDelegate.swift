@@ -69,10 +69,36 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         """
     }
 
+    /// Parse Dolby Vision profile from codec string
+    /// - Parameter codec: Codec string like "dvh1.08.07" or "dvh1.05.06"
+    /// - Returns: Tuple containing (profile, subProfile, suffix) or nil if not a Dolby Vision codec
+    private func parseDolbyVisionProfile(from codec: String) -> (profile: String, subProfile: String, suffix: String)? {
+        // Expected format: dvh1.XX.YY where XX is profile (05, 08, 10) and YY is sub-profile
+        let components = codec.split(separator: ".")
+        guard components.count >= 3,
+              components[0] == "dvh1" else {
+            return nil
+        }
+
+        let profile = String(components[1])
+        let subProfile = String(components[2])
+
+        // Determine suffix based on profile
+        // Profile 8.4 (07) and 10.4 (09) use HLG with db4h, others use PQ with db1p
+        let suffix: String
+        if (profile == "08" && subProfile == "07") || (profile == "10" && subProfile == "09") {
+            suffix = "db4h" // HLG variants
+        } else {
+            suffix = "db1p" // PQ variants (most common)
+        }
+
+        return (profile, subProfile, suffix)
+    }
+
     private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
         guard !videoCodecBlackList.contains(info.codecs) else { return }
         let subtitlePlaceHolder = hasSubtitle ? ",SUBTITLES=\"subs\"" : ""
-        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn
+        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn || info.codecs.hasPrefix("dvh1.")
         let isHDR10 = info.id == 125
         // hdr 10 formate exp: hev1.2.4.L156.90
         //  Codec.Profile.Flags.TierLevel.Constraints
@@ -83,26 +109,41 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         var videoRange = isHDR ? "HLG" : "SDR"
         var codecs = info.codecs
         var supplementCodesc = ""
-        // TODO: Need update all codecs with https://developer.apple.com/documentation/http_live_streaming/http_live_streaming_hls_authoring_specification_for_apple_devices/hls_authoring_specification_for_apple_devices_appendixes
         var framerate = info.frame_rate ?? "25"
+
+        // Handle HDR10
         if isHDR10 {
             videoRange = "PQ"
             if let value = Double(framerate), value <= 30 {} else {
                 framerate = "30"
             }
         }
-        if codecs == "dvh1.08.07" || codecs == "dvh1.08.03" {
-            supplementCodesc = codecs + "/db4h"
-            codecs = "hvc1.2.4.L153.b0"
-            videoRange = "HLG"
-        } else if codecs == "dvh1.08.06" {
-            supplementCodesc = codecs + "/db1p"
-            codecs = "hvc1.2.4.L150"
-            videoRange = "PQ"
-        } else if codecs.hasPrefix("dvh1.05") {
-            videoRange = "PQ"
-        } else if isHDR {
-            Logger.warn("unknown hdr codecs: \(codecs)")
+
+        // Handle Dolby Vision with profile-based configuration
+        if isDolby, let dvProfile = parseDolbyVisionProfile(from: info.codecs) {
+            // Set SUPPLEMENTAL-CODECS according to Apple HLS spec
+            supplementCodesc = info.codecs + "/" + dvProfile.suffix
+
+            // Determine VIDEO-RANGE: HLG for Profile 8.4/10.4, PQ for others
+            if dvProfile.suffix == "db4h" {
+                videoRange = "HLG"
+                // Profile 8.4 uses hvc1.2.4.L153.b0 as base codec
+                codecs = "hvc1.2.4.L153.b0"
+            } else {
+                videoRange = "PQ"
+                // Most Dolby Vision profiles use hvc1.2.4.L150 as base codec
+                // Profile 8.1 variants (06, 08, 03, 01) use L150
+                if dvProfile.profile == "08" {
+                    codecs = "hvc1.2.4.L150"
+                } else if dvProfile.profile == "05" {
+                    // Profile 5 keeps original base codec for compatibility
+                    // Leave codecs unchanged for dvh1.05.xx
+                }
+            }
+        } else if isDolby {
+            // Fallback for unknown Dolby Vision formats
+            Logger.warn("Unrecognized Dolby Vision codec format: \(info.codecs)")
+            videoRange = "PQ" // Default to PQ for safety
         }
 
         if let value = Double(framerate), value >= 60 {

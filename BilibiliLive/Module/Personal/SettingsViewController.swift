@@ -81,6 +81,10 @@ class SettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // 应用深邃暗黑主题
+        setupDarkTheme()
+
         view.addSubview(collectionView)
         collectionView.remembersLastFocusedIndexPath = false
         collectionView.snp.makeConstraints { make in
@@ -413,6 +417,26 @@ class SettingsHeaderView: UICollectionReusableView {
             make.leading.equalToSuperview().offset(20)
             make.top.equalToSuperview().offset(20)
             make.bottom.equalToSuperview().offset(-20)
+        }
+    }
+}
+
+extension SettingsViewController {
+    // MARK: - Theme Setup
+
+    private func setupDarkTheme() {
+        // 深邃纯黑背景
+        view.backgroundColor = ThemeManager.shared.backgroundColor
+
+        // CollectionView 透明背景,显示底层渐变
+        collectionView.backgroundColor = .clear
+
+        // 如果支持 Liquid Glass,可以为整个视图添加微妙的材质效果
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // 为设置面板添加轻微的 Liquid Glass 背景
+            let glassBackground = LiquidGlassView.surface(tintColor: ThemeManager.shared.surfaceColor.withAlphaComponent(0.3))
+            view.insertSubview(glassBackground, at: 0)
+            glassBackground.snp.makeConstraints { $0.edges.equalToSuperview() }
         }
     }
 }

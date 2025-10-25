@@ -1,0 +1,206 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+BiliBili tvOS Client Demo - A feature-rich unofficial Bilibili client for Apple TV with support for video playback, live streaming, danmaku (bullet comments), and cloud casting protocols.
+
+**Important**: This is a demo project that has never been officially released on App Store or TestFlight. Any commercial distribution is unauthorized.
+
+## Build & Development Commands
+
+### Building
+
+```bash
+# Build for simulator (via Fastlane)
+bundle exec fastlane build_simulator
+
+# Build unsigned IPA for sideloading
+bundle exec fastlane build_unsign_ipa
+
+# Standard Xcode build (ensure Apple TV simulator is selected)
+xcodebuild -project BilibiliLive.xcodeproj -scheme BilibiliLive -destination "platform=tvOS Simulator,name=Apple TV"
+```
+
+### Dependencies
+
+All dependencies are managed via Swift Package Manager (SPM) and are declared in the Xcode project:
+
+- **Alamofire**: Network requests
+- **SwiftyJSON**: JSON parsing
+- **Kingfisher**: Image loading/caching
+- **SnapKit**: Auto Layout DSL
+- **SwiftProtobuf**: Protocol Buffers for danmaku
+- **MarqueeLabel**: Scrolling text labels
+- **CocoaAsyncSocket**: Socket connections for live streaming
+- **Swifter**: Embedded HTTP server for DLNA/UPnP
+- **SwiftyXMLParser**: XML parsing for DLNA
+- **CocoaLumberjack**: Logging framework
+- **PocketSVG**: SVG rendering
+- **GzipSwift**: Compression support
+- **LookinServer**: UI debugging (debug builds only)
+
+Dependencies are automatically resolved by Xcode. No manual installation required.
+
+## Architecture
+
+### Module Structure
+
+```
+BilibiliLive/
+├── Module/           # Feature modules (Live, Personal, ViewControllers)
+├── Component/        # Reusable components (Player, Video, Feed, Settings)
+├── Request/          # Network layer (ApiRequest, WebRequest)
+├── Extensions/       # Swift extensions and utilities
+└── Vendor/           # Third-party code (DanmakuKit)
+```
+
+### Core Architecture Patterns
+
+#### 1. Multi-Account System
+
+The app uses a singleton `AccountManager` to manage multiple Bilibili accounts:
+
+- Stores account credentials, tokens, and cookies in UserDefaults
+- Supports account switching without re-login
+- Automatic token refresh and session management
+- Reference: `BilibiliLive/AccountManager.swift`
+
+#### 2. Plugin-Based Player System
+
+The video/live player uses a **plugin architecture** with `CommonPlayerViewController` as the base:
+
+- `CommonPlayerViewController`: Base player with plugin management
+- `VideoPlayerViewController`: Video-specific player (extends base)
+- `LivePlayerViewController`: Live streaming player (extends base)
+
+**Player Plugins** (all conform to `CommonPlayerPlugin` protocol):
+- `DanmuViewPlugin`: Danmaku rendering and display
+- `MaskViewPlugin`: Danmaku collision avoidance masks
+- `SpeedChangerPlugin`: Playback speed control
+- `SponsorSkipPlugin`: SponsorBlock integration
+- `URLPlayPlugin`: Custom URL playback
+- `DebugPlugin`: Debug overlay with player stats
+
+**Video-Specific Plugins**:
+- `BVideoPlayPlugin`: Main video playback logic
+- `BVideoInfoPlugin`: Video metadata and info panel
+- `BVideoClipsPlugin`: Video clips/highlights
+- `BUpnpPlugin`: DLNA/UPnP casting support
+- `VideoPlayListPlugin`: Playlist management
+
+Plugin lifecycle: `playerDidLoad` → `playerDidChange` → `playerDidDismiss` → `playerDidCleanUp`
+
+Reference: `BilibiliLive/Component/Player/` and `BilibiliLive/Component/Video/Plugins/`
+
+#### 3. Network Request Architecture
+
+Two-tier API structure:
+
+**ApiRequest** (`ApiRequest.swift`):
+- Mobile app API endpoints (uses app key/secret signing)
+- TV login protocol (QR code authentication)
+- App-specific features (feed, season info)
+- Includes MD5 signing for request authentication
+
+**WebRequest** (`WebRequest.swift`):
+- Web API endpoints (uses WBI signature)
+- Video playback URLs, danmaku, user favorites
+- Supports cookie-less requests via `NoCookieSession`
+- CSRF token handling for POST requests
+- Reference: `BilibiliLive/Request/`
+
+**WBI Signing** (`WebRequest+WbiSign.swift`):
+- Anti-crawler parameter signing system
+- Required for most video and user-related APIs
+- Automatically applied to eligible requests
+
+#### 4. Danmaku (Bullet Comments) System
+
+Three-part system for displaying synchronized comments:
+
+1. **DanmakuKit** (`Vendor/DanmakuKit/`): Core rendering engine
+   - Track-based layout system with collision detection
+   - Async rendering with `DanmakuAsyncLayer`
+   - Reusable cell pool for performance
+
+2. **Providers**: Data source adapters
+   - `VideoDanmuProvider`: Loads protobuf danmaku for videos
+   - `LiveDanMuProvider`: WebSocket streaming for live danmaku with Brotli decompression
+
+3. **Filters**: Content filtering
+   - `VideoDanmuFilter`: Configurable danmaku filtering (keywords, types)
+
+4. **Mask System**: Intelligent collision avoidance
+   - `BMaskProvider`: Bilibili's web-mask protocol
+   - `VMaskProvider`: Video-based mask detection
+   - Prevents danmaku from obscuring faces/important content
+
+#### 5. DLNA/UPnP Casting
+
+Cloud TV casting protocol support:
+
+- `BiliBiliUpnpDMR`: DLNA Digital Media Renderer implementation
+- Embedded HTTP server (Swifter) for receiving cast commands
+- UDP socket discovery for device detection
+- Compatible with Bilibili's official cloud casting
+- Reference: `BilibiliLive/Module/DLNA/`
+
+### Key Technical Details
+
+#### Authentication Flow
+
+1. QR code generation via TV login API
+2. User scans with mobile app
+3. Poll for auth status → receive `LoginToken`
+4. Exchange token for SSO cookies
+5. Store in `AccountManager` with profile data
+
+#### Video Playback Flow
+
+1. `PlayInfo` (aid/cid/epid) → `VideoPlayerViewController`
+2. `VideoPlayerViewModel` coordinates plugins
+3. `BVideoPlayPlugin` fetches playurl (with WBI signing)
+4. Handles DASH/HLS streams, HDR, subtitles
+5. Custom `BilibiliVideoResourceLoaderDelegate` for DASH playback
+6. `SidxParseUtil` parses DASH sidx boxes for seeking
+
+#### Live Streaming Flow
+
+1. Room ID → fetch stream URLs and danmaku server
+2. WebSocket connection to danmaku server
+3. Brotli-compressed protobuf messages
+4. Real-time danmaku rendering via `LiveDanMuProvider`
+
+## Code Conventions
+
+- SwiftUI is not used; all UI is UIKit-based
+- Uses SnapKit for Auto Layout constraints
+- Combine framework for reactive programming (view models)
+- Async/await for modern concurrency
+- UserDefaults with `@UserDefault` property wrapper for settings
+- Logging via CocoaLumberjack's `Logger` singleton
+
+## Important Files
+
+- `Keys.swift`: API constants and User-Agent strings
+- `Settings.swift`: App-wide settings management with UserDefaults
+- `CookieManager.swift`: Cookie handling and persistence
+- `BvidConvertor.swift`: aid ↔ bvid conversion utilities
+- `dm.pb.swift`, `dmView.pb.swift`: Protobuf definitions for danmaku
+
+## Testing & Debugging
+
+- Use LookinServer (debug builds) for UI inspection
+- Enable `DebugPlugin` in player for real-time stats
+- Check `Logger` output for network/playback issues
+- Test multi-account switching in `SettingsViewController`
+
+## Notes for Development
+
+- Bilibili APIs use **WBI signing** (implemented in `WebRequest+WbiSign.swift`) - do not remove or modify this logic
+- The app uses both web APIs and mobile app APIs - they have different authentication requirements
+- Player plugins must be added before setting the player's AVPlayer instance
+- Danmaku synchronization relies on accurate video timestamps
+- DLNA casting requires proper network permissions in Info.plist
