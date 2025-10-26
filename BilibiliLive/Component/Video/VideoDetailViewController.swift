@@ -97,6 +97,7 @@ class VideoDetailViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        setupTheme()
         Task { await fetchData() }
 
         pageCollectionView.register(BLTextOnlyCollectionViewCell.self, forCellWithReuseIdentifier: String(describing: BLTextOnlyCollectionViewCell.self))
@@ -141,10 +142,51 @@ class VideoDetailViewController: UIViewController {
         return playButton
     }
 
+    // MARK: - Theme Setup
+
+    private func setupTheme() {
+        // 应用深邃纯黑背景
+        view.backgroundColor = ThemeManager.shared.backgroundColor
+
+        // 配置模糊效果视图 - 使用主题材质
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            effectContainerView.effect = ThemeManager.shared.createEffect(style: .surface)
+        } else {
+            effectContainerView.effect = ThemeManager.shared.createEffect(style: .surface)
+        }
+
+        // 文本颜色 - 主要文本
+        titleLabel.textColor = ThemeManager.shared.textPrimaryColor
+
+        // 文本颜色 - 次要文本
+        playCountLabel.textColor = ThemeManager.shared.textSecondaryColor
+        danmakuLabel.textColor = ThemeManager.shared.textSecondaryColor
+        followersLabel.textColor = ThemeManager.shared.textSecondaryColor
+        durationLabel.textColor = ThemeManager.shared.textSecondaryColor
+        ugcLabel.textColor = ThemeManager.shared.textPrimaryColor
+
+        // 文本颜色 - 三级文本
+        uploadTimeLabel.textColor = ThemeManager.shared.textTertiaryColor
+        bvidLabel.textColor = ThemeManager.shared.textTertiaryColor
+
+        // ScrollView 背景透明，显示底层主题背景
+        scrollView.backgroundColor = .clear
+
+        // CollectionViews 背景透明
+        pageCollectionView.backgroundColor = .clear
+        recommandCollectionView.backgroundColor = .clear
+        replysCollectionView.backgroundColor = .clear
+        ugcCollectionView.backgroundColor = .clear
+
+        // 视图背景
+        pageView.backgroundColor = .clear
+        ugcView.backgroundColor = .clear
+    }
+
     private func setupLoading() {
         effectContainerView.isHidden = true
         view.addSubview(loadingView)
-        loadingView.color = .white
+        loadingView.color = ThemeManager.shared.textPrimaryColor
         loadingView.style = .large
         loadingView.startAnimating()
         loadingView.makeConstraintsBindToCenterOfSuperview()
@@ -554,7 +596,7 @@ class BLCardView: TVCardView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        cardBackgroundColor = UIColor(named: "bgColor")
+        cardBackgroundColor = ThemeManager.shared.surfaceColor
     }
 }
 
@@ -594,6 +636,7 @@ extension VideoDetailViewController {
 class RelatedVideoCell: BLMotionCollectionViewCell {
     let titleLabel = MarqueeLabel()
     let imageView = UIImageView()
+
     override func setup() {
         super.setup()
         contentView.addSubview(imageView)
@@ -612,7 +655,14 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
         titleLabel.setContentHuggingPriority(.required, for: .vertical)
         titleLabel.font = UIFont.systemFont(ofSize: 28)
         titleLabel.fadeLength = 60
+        titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         stopScroll()
+
+        // 应用主题 - 阴影预设
+        imageView.layer.shadowColor = UIColor.black.cgColor
+        imageView.layer.shadowOpacity = 0
+        imageView.layer.shadowRadius = 0
+        imageView.layer.shadowOffset = .zero
     }
 
     func update(data: any DisplayData) {
@@ -622,10 +672,29 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        if isFocused {
-            startScroll()
-        } else {
-            stopScroll()
+
+        coordinator.addCoordinatedAnimations {
+            if self.isFocused {
+                // 焦点状态 - 轻微缩放
+                self.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+                self.titleLabel.textColor = ThemeManager.shared.accentColor
+
+                // 应用阴影
+                self.imageView.layer.shadowOpacity = 0.4
+                self.imageView.layer.shadowRadius = 12
+                self.imageView.layer.shadowOffset = CGSize(width: 0, height: 4)
+
+                self.startScroll()
+            } else {
+                // 失焦状态 - 还原
+                self.transform = .identity
+                self.titleLabel.textColor = ThemeManager.shared.textPrimaryColor
+
+                // 移除阴影
+                self.imageView.layer.shadowOpacity = 0
+
+                self.stopScroll()
+            }
         }
     }
 
@@ -688,7 +757,7 @@ class NoteDetailView: UIControl {
 
     func setup() {
         addSubview(backgroundView)
-        backgroundView.backgroundColor = UIColor(named: "bgColor")
+        backgroundView.backgroundColor = ThemeManager.shared.surfaceColor
         backgroundView.layer.shadowOffset = CGSizeMake(0, 10)
         backgroundView.layer.shadowOpacity = 0.15
         backgroundView.layer.shadowRadius = 16.0
@@ -704,7 +773,7 @@ class NoteDetailView: UIControl {
         addSubview(label)
         label.numberOfLines = 0
         label.font = UIFont.systemFont(ofSize: 29)
-        label.textColor = UIColor(named: "titleColor")
+        label.textColor = ThemeManager.shared.textPrimaryColor
         label.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview()
             make.top.equalToSuperview().offset(14)
@@ -750,17 +819,26 @@ class ContentDetailViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // 应用主题
+        view.backgroundColor = ThemeManager.shared.backgroundColor
+
         view.addSubview(titleLabel)
         view.addSubview(contentTextView)
-        titleLabel.font = UIFont.systemFont(ofSize: 60, weight: .semibold)
+
+        titleLabel.font = .systemFont(ofSize: 60, weight: .semibold)
+        titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         titleLabel.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(80)
             make.centerX.equalToSuperview()
         }
+
         contentTextView.panGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
         contentTextView.isScrollEnabled = true
         contentTextView.isUserInteractionEnabled = true
         contentTextView.isSelectable = true
+        contentTextView.backgroundColor = .clear
+        contentTextView.textColor = ThemeManager.shared.textSecondaryColor
         contentTextView.snp.makeConstraints { make in
             make.top.equalTo(titleLabel.snp.bottom)
             make.centerX.equalToSuperview()
