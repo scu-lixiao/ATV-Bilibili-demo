@@ -195,6 +195,55 @@ class ThemeManager {
         layer.shadowOpacity = 0
     }
 
+    // MARK: - Button Specific Styles
+
+    /// 应用按钮焦点视觉效果（增强版）
+    /// - Parameters:
+    ///   - layer: 目标图层
+    ///   - buttonType: 按钮类型，决定效果强度
+    func applyButtonFocusEffect(to layer: CALayer, buttonType: String = "action") {
+        let isActionButton = buttonType == "action"
+        
+        layer.shadowColor = isActionButton ? 
+            ColorPalette.accentPink.cgColor : 
+            UIColor.black.cgColor
+        layer.shadowOpacity = isActionButton ? 0.9 : 0.7
+        layer.shadowOffset = CGSize(width: 0, height: isActionButton ? 10 : 8)
+        layer.shadowRadius = isActionButton ? 24 : 20
+    }
+
+    /// 创建按钮专用的渐变配置
+    /// - Parameter accentColor: 是否使用品牌强调色
+    /// - Returns: 渐变颜色数组
+    func createButtonGradientColors(useAccent: Bool = false) -> [CGColor] {
+        if useAccent {
+            return [
+                ColorPalette.accentPink.withAlphaComponent(0.35).cgColor,
+                ColorPalette.accent.withAlphaComponent(0.25).cgColor,
+                UIColor.clear.cgColor
+            ]
+        } else {
+            return [
+                ColorPalette.surfaceElevated.withAlphaComponent(0.3).cgColor,
+                UIColor.clear.cgColor
+            ]
+        }
+    }
+
+    /// 获取按钮图标色（根据状态）
+    /// - Parameter isFocused: 是否处于焦点状态
+    /// - Returns: 图标颜色
+    func buttonIconColor(isFocused: Bool) -> UIColor {
+        return isFocused ? textPrimaryColor : textSecondaryColor
+    }
+
+    /// 获取按钮文本色（根据状态）
+    /// - Parameter isFocused: 是否处于焦点状态
+    /// - Returns: 文本颜色
+    func buttonTextColor(isFocused: Bool) -> UIColor {
+        return isFocused ? UIColor.black : textPrimaryColor
+    }
+
     // MARK: - Notification
 
     private func setupObservers() {

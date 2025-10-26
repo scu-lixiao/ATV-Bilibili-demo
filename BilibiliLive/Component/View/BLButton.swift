@@ -86,16 +86,34 @@ class BLCustomButton: BLButton {
     private func updateButton() {
         if isFocused {
             imageView.image = highLightImage ?? getImage()
-            imageView.tintColor = .black
+            // 使用主题色替代硬编码黑色
+            imageView.tintColor = ThemeManager.shared.buttonTextColor(isFocused: true)
         } else {
             imageView.image = getImage()
-            imageView.tintColor = .white
+            // 使用主题色替代硬编码白色
+            imageView.tintColor = ThemeManager.shared.buttonIconColor(isFocused: false)
         }
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        updateButton()
+        
+        coordinator.addCoordinatedAnimations { [weak self] in
+            self?.updateButton()
+            
+            // 添加图标缩放动画
+            if let imageView = self?.imageView, self?.isFocused == true {
+                UIView.animate(withDuration: 0.2, delay: 0.1, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: []) {
+                    imageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                } completion: { _ in
+                    UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.3, options: []) {
+                        imageView.transform = .identity
+                    }
+                }
+            } else if let imageView = self?.imageView {
+                imageView.transform = .identity
+            }
+        }
     }
 }
 
@@ -109,12 +127,12 @@ class BLCustomTextButton: BLButton {
         didSet { titleLabel.text = title }
     }
 
-    @IBInspectable var titleColor: UIColor = .white {
-        didSet { titleLabel.textColor = titleColor }
+    @IBInspectable var titleColor: UIColor = UIColor.white {
+        didSet { updateTitleColor() }
     }
 
-    @IBInspectable var titleSelectedColor: UIColor = .black {
-        didSet { titleLabel.textColor = titleColor }
+    @IBInspectable var titleSelectedColor: UIColor = UIColor.black {
+        didSet { updateTitleColor() }
     }
 
     @IBInspectable var titleFont: UIFont = .systemFont(ofSize: 28) {
@@ -123,27 +141,45 @@ class BLCustomTextButton: BLButton {
 
     override func setup() {
         super.setup()
-        effectView.layer.cornerRadius = 10
+        effectView.layer.cornerRadius = 12
         effectView.contentView.addSubview(titleLabel)
         titleLabel.snp.makeConstraints { make in
-            make.top.bottom.equalToSuperview().inset(10)
-            make.left.right.equalToSuperview().inset(24)
+            make.top.bottom.equalToSuperview().inset(12)
+            make.left.right.equalToSuperview().inset(28)
         }
         titleLabel.text = title
         titleLabel.font = titleFont
-        titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
+        updateTitleColor()
         titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+    
+    private func updateTitleColor() {
+        titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
+        
+        coordinator.addCoordinatedAnimations { [weak self] in
+            self?.updateTitleColor()
+            
+            // 添加文本微妙缩放
+            if let label = self?.titleLabel, self?.isFocused == true {
+                UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut]) {
+                    label.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+                } completion: { _ in
+                    UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseIn]) {
+                        label.transform = .identity
+                    }
+                }
+            }
+        }
     }
 }
 
 class BLButton: UIControl {
     private var motionEffect: UIInterpolatingMotionEffect!
-    fileprivate let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
+    internal let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
     private let selectedWhiteView = UIView()
 
     var onPrimaryAction: ((BLButton) -> Void)?
@@ -194,20 +230,52 @@ class BLButton: UIControl {
         if isFocused {
             selectedWhiteView.isHidden = false
             coordinator.addCoordinatedAnimations {
-                self.transform = CGAffineTransformMakeScale(1.1, 1.1)
-                let scaleDiff = (self.bounds.size.height * 1.1 - self.bounds.size.height) / 2
-                self.transform = CGAffineTransformTranslate(self.transform, 0, -scaleDiff)
-                self.layer.shadowOffset = CGSizeMake(0, 10)
-                self.layer.shadowOpacity = 0.15
-                self.layer.shadowRadius = 16.0
+                // 增强的缩放效果（使用弹簧动画）
+                UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5, options: [.curveEaseInOut]) {
+                    self.transform = CGAffineTransformMakeScale(1.1, 1.1)
+                    let scaleDiff = (self.bounds.size.height * 1.1 - self.bounds.size.height) / 2
+                    self.transform = CGAffineTransformTranslate(self.transform, 0, -scaleDiff)
+                }
+                
+                // 增强的阴影效果
+                ThemeManager.shared.applyButtonFocusEffect(to: self.layer, buttonType: "action")
+                
+                // 显示渐变层（如果存在）
+                if let gradientLayer = self.layer.value(forKey: "gradientLayer") as? CAGradientLayer {
+                    let animation = CABasicAnimation(keyPath: "opacity")
+                    animation.fromValue = 0.0
+                    animation.toValue = 1.0
+                    animation.duration = 0.3
+                    animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    animation.fillMode = .forwards
+                    animation.isRemovedOnCompletion = false
+                    gradientLayer.add(animation, forKey: "showGradient")
+                }
+                
                 self.addMotionEffect(self.motionEffect)
             }
         } else {
             selectedWhiteView.isHidden = true
             coordinator.addCoordinatedAnimations {
-                self.transform = CGAffineTransformIdentity
-                self.layer.shadowOpacity = 0
-                self.layer.shadowOffset = CGSizeMake(0, 0)
+                // 恢复动画
+                UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.3, options: [.curveEaseInOut]) {
+                    self.transform = CGAffineTransformIdentity
+                }
+                
+                ThemeManager.shared.removeShadow(from: self.layer)
+                
+                // 隐藏渐变层
+                if let gradientLayer = self.layer.value(forKey: "gradientLayer") as? CAGradientLayer {
+                    let animation = CABasicAnimation(keyPath: "opacity")
+                    animation.fromValue = 1.0
+                    animation.toValue = 0.0
+                    animation.duration = 0.3
+                    animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    animation.fillMode = .forwards
+                    animation.isRemovedOnCompletion = false
+                    gradientLayer.add(animation, forKey: "hideGradient")
+                }
+                
                 self.removeMotionEffect(self.motionEffect)
             }
         }

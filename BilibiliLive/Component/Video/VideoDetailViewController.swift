@@ -136,6 +136,27 @@ class VideoDetailViewController: UIViewController {
             self?.repliesCollectionViewHeightConstraints.constant = newSize.height
             self?.view.setNeedsLayout()
         }.store(in: &subscriptions)
+        
+        // 优化封面图片视觉效果
+        enhanceCoverImageView()
+    }
+    
+    // MARK: - Cover Image Enhancement
+    
+    /// 优化封面图片的视觉效果
+    private func enhanceCoverImageView() {
+        coverImageView.layer.cornerRadius = 16
+        coverImageView.layer.cornerCurve = .continuous
+        coverImageView.clipsToBounds = true
+        
+        // 添加微妙阴影
+        coverImageView.layer.shadowColor = UIColor.black.cgColor
+        coverImageView.layer.shadowOpacity = 0.3
+        coverImageView.layer.shadowOffset = CGSize(width: 0, height: 8)
+        coverImageView.layer.shadowRadius = 16
+        
+        // 背景图片模糊效果增强
+        backgroundImageView.alpha = 0.15
     }
 
     override var preferredFocusedView: UIView? {
@@ -181,6 +202,80 @@ class VideoDetailViewController: UIViewController {
         // 视图背景
         pageView.backgroundColor = .clear
         ugcView.backgroundColor = .clear
+        
+        // 增强按钮视觉效果
+        enhanceButtonVisuals()
+    }
+    
+    // MARK: - Button Enhancement
+    
+    /// 深度优化按钮视觉效果
+    private func enhanceButtonVisuals() {
+        // 播放按钮 - 添加品牌色渐变
+        enhanceActionButton(playButton, useAccentGradient: true, iconScale: 0.55)
+        
+        // 点赞按钮 - 添加品牌色渐变
+        enhanceActionButton(likeButton, useAccentGradient: true)
+        
+        // 投币按钮 - 添加品牌色渐变
+        enhanceActionButton(coinButton, useAccentGradient: true)
+        
+        // 收藏按钮
+        enhanceActionButton(favButton, useAccentGradient: false)
+        
+        // 不喜欢按钮
+        enhanceActionButton(dislikeButton, useAccentGradient: false)
+        
+        // 关注按钮 - 信息类按钮
+        if let followBtn = followButton {
+            enhanceInfoButton(followBtn)
+        }
+        
+        // UP主按钮 - 信息类按钮
+        if let upBtn = upButton {
+            enhanceTextButton(upBtn)
+        }
+    }
+    
+    /// 增强动作按钮（播放、点赞等）
+    private func enhanceActionButton(_ button: BLCustomButton?, useAccentGradient: Bool, iconScale: CGFloat = 0.5) {
+        guard let button = button else { return }
+        
+        // 优化圆角
+        button.effectView.layer.cornerRadius = button.bounds.height * 0.25
+        button.layer.cornerRadius = button.bounds.height * 0.25
+        
+        // 添加渐变层（如果需要）
+        if useAccentGradient {
+            let gradientLayer = CAGradientLayer()
+            gradientLayer.colors = ThemeManager.shared.createButtonGradientColors(useAccent: true)
+            gradientLayer.startPoint = CGPoint(x: 0.5, y: 0)
+            gradientLayer.endPoint = CGPoint(x: 0.5, y: 1)
+            gradientLayer.frame = button.effectView.bounds
+            gradientLayer.cornerRadius = button.effectView.layer.cornerRadius
+            gradientLayer.opacity = 0 // 初始隐藏，焦点时显示
+            button.effectView.layer.insertSublayer(gradientLayer, at: 0)
+            
+            // 保存引用以便后续访问
+            button.layer.setValue(gradientLayer, forKey: "gradientLayer")
+        }
+        
+        // 优化阴影预设
+        ThemeManager.shared.removeShadow(from: button.layer)
+    }
+    
+    /// 增强信息按钮（关注等）
+    private func enhanceInfoButton(_ button: BLCustomButton) {
+        button.effectView.layer.cornerRadius = button.bounds.height * 0.3
+        button.layer.cornerRadius = button.bounds.height * 0.3
+        ThemeManager.shared.removeShadow(from: button.layer)
+    }
+    
+    /// 增强文本按钮（UP主等）
+    private func enhanceTextButton(_ button: BLCustomTextButton) {
+        button.effectView.layer.cornerRadius = button.bounds.height * 0.25
+        button.layer.cornerRadius = button.bounds.height * 0.25
+        ThemeManager.shared.removeShadow(from: button.layer)
     }
 
     private func setupLoading() {
@@ -636,6 +731,7 @@ extension VideoDetailViewController {
 class RelatedVideoCell: BLMotionCollectionViewCell {
     let titleLabel = MarqueeLabel()
     let imageView = UIImageView()
+    private var focusAnimator: UIViewPropertyAnimator?
 
     override func setup() {
         super.setup()
@@ -645,57 +741,66 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
             make.top.left.right.equalToSuperview()
             make.width.equalTo(imageView.snp.height).multipliedBy(14.0 / 9)
         }
-        imageView.layer.cornerRadius = 12
+        imageView.layer.cornerRadius = 14
         imageView.clipsToBounds = true
         imageView.contentMode = .scaleAspectFill
         titleLabel.snp.makeConstraints { make in
             make.left.right.bottom.equalToSuperview()
-            make.top.equalTo(imageView.snp.bottom).offset(6)
+            make.top.equalTo(imageView.snp.bottom).offset(8)
         }
         titleLabel.setContentHuggingPriority(.required, for: .vertical)
-        titleLabel.font = UIFont.systemFont(ofSize: 28)
+        titleLabel.font = UIFont.systemFont(ofSize: 28, weight: .medium)
         titleLabel.fadeLength = 60
         titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         stopScroll()
 
-        // 应用主题 - 阴影预设
-        imageView.layer.shadowColor = UIColor.black.cgColor
-        imageView.layer.shadowOpacity = 0
-        imageView.layer.shadowRadius = 0
-        imageView.layer.shadowOffset = .zero
+        // 应用主题 - 阴影预设（初始为0）
+        ThemeManager.shared.removeShadow(from: imageView.layer)
+    }
+
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        
+        focusAnimator?.stopAnimation(true)
+        
+        if isFocused {
+            coordinator.addCoordinatedAnimations { [weak self] in
+                guard let self = self else { return }
+                
+                // 增强阴影效果
+                ThemeManager.shared.applyPremiumShadow(to: self.imageView.layer)
+                
+                // 轻微缩放
+                self.imageView.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+                
+                // 标题颜色强化
+                self.titleLabel.textColor = ThemeManager.shared.accentPinkColor
+            }
+            
+            // 开始跑马灯
+            startScroll()
+        } else {
+            coordinator.addCoordinatedAnimations { [weak self] in
+                guard let self = self else { return }
+                
+                // 移除阴影
+                ThemeManager.shared.removeShadow(from: self.imageView.layer)
+                
+                // 恢复大小
+                self.imageView.transform = .identity
+                
+                // 恢复标题颜色
+                self.titleLabel.textColor = ThemeManager.shared.textPrimaryColor
+            }
+            
+            // 停止跑马灯
+            stopScroll()
+        }
     }
 
     func update(data: any DisplayData) {
         titleLabel.text = data.title
         imageView.kf.setImage(with: data.pic, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 360, height: 202))), .cacheOriginalImage])
-    }
-
-    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-        super.didUpdateFocus(in: context, with: coordinator)
-
-        coordinator.addCoordinatedAnimations {
-            if self.isFocused {
-                // 焦点状态 - 轻微缩放
-                self.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
-                self.titleLabel.textColor = ThemeManager.shared.accentColor
-
-                // 应用阴影
-                self.imageView.layer.shadowOpacity = 0.4
-                self.imageView.layer.shadowRadius = 12
-                self.imageView.layer.shadowOffset = CGSize(width: 0, height: 4)
-
-                self.startScroll()
-            } else {
-                // 失焦状态 - 还原
-                self.transform = .identity
-                self.titleLabel.textColor = ThemeManager.shared.textPrimaryColor
-
-                // 移除阴影
-                self.imageView.layer.shadowOpacity = 0
-
-                self.stopScroll()
-            }
-        }
     }
 
     private func startScroll() {
@@ -745,6 +850,8 @@ class NoteDetailView: UIControl {
     let label = UILabel()
     var onPrimaryAction: ((NoteDetailView) -> Void)?
     private let backgroundView = UIView()
+    private var focusAnimator: UIViewPropertyAnimator?
+    
     init() {
         super.init(frame: .zero)
         setup()
@@ -759,9 +866,9 @@ class NoteDetailView: UIControl {
         addSubview(backgroundView)
         backgroundView.backgroundColor = ThemeManager.shared.surfaceColor
         backgroundView.layer.shadowOffset = CGSizeMake(0, 10)
-        backgroundView.layer.shadowOpacity = 0.15
+        backgroundView.layer.shadowOpacity = 0
         backgroundView.layer.shadowRadius = 16.0
-        backgroundView.layer.cornerRadius = 20
+        backgroundView.layer.cornerRadius = 24
         backgroundView.layer.cornerCurve = .continuous
         backgroundView.isHidden = !isFocused
         backgroundView.snp.makeConstraints { make in
@@ -772,18 +879,50 @@ class NoteDetailView: UIControl {
 
         addSubview(label)
         label.numberOfLines = 0
-        label.font = UIFont.systemFont(ofSize: 29)
+        label.font = UIFont.systemFont(ofSize: 29, weight: .regular)
         label.textColor = ThemeManager.shared.textPrimaryColor
         label.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview()
-            make.top.equalToSuperview().offset(14)
-            make.bottom.lessThanOrEqualToSuperview().offset(-14)
+            make.top.equalToSuperview().offset(16)
+            make.bottom.lessThanOrEqualToSuperview().offset(-16)
         }
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        backgroundView.isHidden = !isFocused
+        
+        focusAnimator?.stopAnimation(true)
+        
+        if isFocused {
+            backgroundView.isHidden = false
+            coordinator.addCoordinatedAnimations { [weak self] in
+                guard let self = self else { return }
+                
+                // 应用增强阴影
+                ThemeManager.shared.applyFocusShadow(to: self.backgroundView.layer)
+                
+                // 轻微缩放
+                self.transform = CGAffineTransform(scaleX: 1.02, y: 1.02)
+                
+                // 文本颜色强化
+                self.label.textColor = ThemeManager.shared.accentColor
+            }
+        } else {
+            coordinator.addCoordinatedAnimations { [weak self] in
+                guard let self = self else { return }
+                
+                // 移除阴影
+                ThemeManager.shared.removeShadow(from: self.backgroundView.layer)
+                
+                // 恢复大小
+                self.transform = .identity
+                
+                // 恢复文本颜色
+                self.label.textColor = ThemeManager.shared.textPrimaryColor
+            } completion: { [weak self] in
+                self?.backgroundView.isHidden = true
+            }
+        }
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
