@@ -2,6 +2,27 @@
 # Created by https://www.toptal.com/developers/gitignore/api/swift
 # Edit at https://www.toptal.com/developers/gitignore?templates=swift
 
+### Custom Ignore Rules ###
+# IDE and Editor Settings
+.vscode/
+.idea/
+.claude/
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# GitHub Configuration
+.github/
+
+# MCP Configuration
+.mcp.json
+
+# Bundler
+.bundle/
+vendor/bundle/
+
 ### Swift ###
 # Xcode
 #
