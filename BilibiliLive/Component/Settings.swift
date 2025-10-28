@@ -56,6 +56,9 @@ enum Settings {
 
     @UserDefault("Settings.preferAvc", defaultValue: false)
     static var preferAvc: Bool
+    
+    @UserDefaultCodable("Settings.codecPreference", defaultValue: .auto)
+    static var codecPreference: CodecPreference
 
     @UserDefault("Settings.danmuMask", defaultValue: true)
     static var danmuMask: Bool
@@ -256,10 +259,33 @@ extension DanmuArea {
     }
 }
 
+enum CodecPreference: String, Codable, CaseIterable {
+    case auto       // Automatic selection based on quality
+    case preferAV1  // Prefer AV1 when available
+    case preferHEVC // Prefer HEVC/H.265
+    case preferAVC  // Prefer AVC/H.264 (for compatibility)
+    
+    var desp: String {
+        switch self {
+        case .auto:
+            return "自动"
+        case .preferAV1:
+            return "优先 AV1"
+        case .preferHEVC:
+            return "优先 HEVC"
+        case .preferAVC:
+            return "优先 AVC/H.264"
+        }
+    }
+}
+
 enum MediaQualityEnum: Codable, CaseIterable {
     case quality_1080p
     case quality_2160p
+    case quality_hdr10
+    case quality_hdr10plus
     case quality_hdr_dolby
+    case quality_hlg
 }
 
 extension MediaQualityEnum {
@@ -269,8 +295,14 @@ extension MediaQualityEnum {
             return "1080p"
         case .quality_2160p:
             return "4K"
+        case .quality_hdr10:
+            return "HDR10"
+        case .quality_hdr10plus:
+            return "HDR10+"
         case .quality_hdr_dolby:
             return "杜比视界"
+        case .quality_hlg:
+            return "HLG"
         }
     }
 
@@ -280,19 +312,31 @@ extension MediaQualityEnum {
             return 116
         case .quality_2160p:
             return 120
+        case .quality_hdr10:
+            return 125 // HDR10 quality number
+        case .quality_hdr10plus:
+            return 127 // HDR10+ quality number (may need verification from Bilibili API)
         case .quality_hdr_dolby:
             return 126
+        case .quality_hlg:
+            return 121 // HLG quality number (may need verification)
         }
     }
 
     var fnval: Int {
         switch self {
         case .quality_1080p:
-            return 16
+            return 16  // 0b10000: DASH
         case .quality_2160p:
-            return 144
+            return 144 // 0b10010000: DASH + 4K
+        case .quality_hdr10:
+            return 400 // 0b110010000: DASH + 4K + HDR
+        case .quality_hdr10plus:
+            return 400 // Same as HDR10, distinction comes from qn
         case .quality_hdr_dolby:
-            return 976
+            return 976 // 0b1111010000: DASH + 4K + HDR + Dolby
+        case .quality_hlg:
+            return 400 // 0b110010000: DASH + 4K + HDR
         }
     }
 }

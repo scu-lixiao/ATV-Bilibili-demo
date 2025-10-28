@@ -57,6 +57,63 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     }
 
     let videoCodecBlackList = ["avc1.640034"] // high 5.2 is not supported
+    
+    // Extended codec compatibility checks
+    private func isCodecSupported(_ codec: String) -> Bool {
+        // Check blacklist
+        if videoCodecBlackList.contains(codec) {
+            return false
+        }
+        
+        // Check for unsupported profiles
+        // AVC High 5.2 and above are not supported on some devices
+        if codec.hasPrefix("avc1.6400") {
+            // avc1.640033 (High 5.1) and above may have issues
+            if let profile = codec.split(separator: ".").last,
+               let profileNum = Int(String(profile), radix: 16),
+               profileNum >= 0x33 {
+                Logger.warn("AVC profile \(codec) may not be supported on this device")
+                return false
+            }
+        }
+        
+        // HEVC profiles check (most profiles are supported on Apple TV 4K)
+        // But some exotic profiles might not work
+        if codec.hasPrefix("hev1.") || codec.hasPrefix("hvc1.") {
+            // Allow all standard HEVC profiles
+            return true
+        }
+        
+        // AV1 requires tvOS 14+ and Apple TV 4K (2nd gen or later)
+        if codec.hasPrefix("av01.") {
+            // Check if device supports AV1 (simplified check)
+            if #available(tvOS 14.0, *) {
+                return true
+            } else {
+                Logger.warn("AV1 codec requires tvOS 14+")
+                return false
+            }
+        }
+        
+        // Dolby Vision codecs
+        if codec.hasPrefix("dvh1.") || codec.hasPrefix("dvhe.") {
+            // Dolby Vision requires tvOS 12+ and Apple TV 4K
+            if #available(tvOS 12.0, *) {
+                return true
+            } else {
+                Logger.warn("Dolby Vision requires tvOS 12+")
+                return false
+            }
+        }
+        
+        // VP9 is not natively supported by AVFoundation
+        if codec.hasPrefix("vp09.") || codec.hasPrefix("vp9") {
+            Logger.warn("VP9 codec is not natively supported")
+            return false
+        }
+        
+        return true
+    }
 
     private func reset() {
         playlists.removeAll()
@@ -76,47 +133,86 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         // Expected format: dvh1.XX.YY where XX is profile (05, 08, 10) and YY is sub-profile
         let components = codec.split(separator: ".")
         guard components.count >= 3,
-              components[0] == "dvh1" else {
+              (components[0] == "dvh1" || components[0] == "dvhe") else {
             return nil
         }
 
         let profile = String(components[1])
         let subProfile = String(components[2])
 
-        // Determine suffix based on profile
-        // Profile 8.4 (07) and 10.4 (09) use HLG with db4h, others use PQ with db1p
+        // Determine suffix based on profile and sub-profile
+        // Reference: https://developer.apple.com/documentation/http_live_streaming/hls_authoring_specification_for_apple_devices
         let suffix: String
-        if (profile == "08" && subProfile == "07") || (profile == "10" && subProfile == "09") {
-            suffix = "db4h" // HLG variants
-        } else {
-            suffix = "db1p" // PQ variants (most common)
+        switch (profile, subProfile) {
+        case ("05", _):
+            // Profile 5: Backward compatible with HEVC Main 10
+            suffix = "db1p" // PQ transfer function
+        case ("08", "01"):
+            // Profile 8.1: Single layer HEVC with PQ
+            suffix = "db1p"
+        case ("08", "07"):
+            // Profile 8.4: Single layer HEVC with HLG
+            suffix = "db4h"
+        case ("09", _):
+            // Profile 9: Gaming profile with low latency
+            suffix = "db1p"
+        case ("10", "07"):
+            // Profile 10.7: Single layer AV1 with HLG (future support)
+            suffix = "db4h"
+        case ("10", "09"):
+            // Profile 10.9: Single layer HEVC with HLG
+            suffix = "db4h"
+        default:
+            // Default to PQ for unknown profiles
+            Logger.warn("Unrecognized Dolby Vision profile: \(profile).\(subProfile), defaulting to PQ")
+            suffix = "db1p"
         }
 
         return (profile, subProfile, suffix)
     }
 
     private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
-        guard !videoCodecBlackList.contains(info.codecs) else { return }
+        // Check codec compatibility
+        guard isCodecSupported(info.codecs) else {
+            Logger.debug("Skipping unsupported codec: \(info.codecs)")
+            return
+        }
+        
         let subtitlePlaceHolder = hasSubtitle ? ",SUBTITLES=\"subs\"" : ""
-        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn || info.codecs.hasPrefix("dvh1.")
-        let isHDR10 = info.id == 125
-        // hdr 10 formate exp: hev1.2.4.L156.90
-        //  Codec.Profile.Flags.TierLevel.Constraints
-        let isHDR = isDolby || isHDR10
+        
+        // Detect video format type
+        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn || info.codecs.hasPrefix("dvh1.") || info.codecs.hasPrefix("dvhe.")
+        let isHDR10Plus = info.id == MediaQualityEnum.quality_hdr10plus.qn
+        let isHDR10 = info.id == MediaQualityEnum.quality_hdr10.qn
+        let isHLG = info.id == MediaQualityEnum.quality_hlg.qn
+        
+        // HDR detection: any of the above formats
+        let isHDR = isDolby || isHDR10Plus || isHDR10 || isHLG
+        
         if isHDR {
             self.isHDR = true
         }
+        
         var videoRange = isHDR ? "HLG" : "SDR"
         var codecs = info.codecs
         var supplementCodesc = ""
         var framerate = info.frame_rate ?? "25"
 
-        // Handle HDR10
-        if isHDR10 {
+        // Handle HDR10 and HDR10+
+        if isHDR10 || isHDR10Plus {
             videoRange = "PQ"
-            if let value = Double(framerate), value <= 30 {} else {
+            // Limit framerate for HDR10 to ensure compatibility
+            if let value = Double(framerate), value <= 30 {
+                // Keep original framerate
+            } else {
                 framerate = "30"
             }
+        }
+        
+        // Handle HLG (Hybrid Log-Gamma)
+        if isHLG {
+            videoRange = "HLG"
+            // HLG typically supports higher framerates
         }
 
         // Handle Dolby Vision with profile-based configuration
@@ -124,20 +220,29 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             // Set SUPPLEMENTAL-CODECS according to Apple HLS spec
             supplementCodesc = info.codecs + "/" + dvProfile.suffix
 
-            // Determine VIDEO-RANGE: HLG for Profile 8.4/10.4, PQ for others
+            // Determine VIDEO-RANGE: HLG for Profile 8.4/10.4/10.7, PQ for others
             if dvProfile.suffix == "db4h" {
                 videoRange = "HLG"
-                // Profile 8.4 uses hvc1.2.4.L153.b0 as base codec
-                codecs = "hvc1.2.4.L153.b0"
+                // HLG-based Dolby Vision profiles use specific base codecs
+                if dvProfile.profile == "08" && dvProfile.subProfile == "07" {
+                    // Profile 8.4 uses hvc1.2.4.L153.b0 as base codec
+                    codecs = "hvc1.2.4.L153.b0"
+                } else if dvProfile.profile == "10" && dvProfile.subProfile == "09" {
+                    // Profile 10.9 uses similar base codec
+                    codecs = "hvc1.2.4.L153.b0"
+                }
             } else {
                 videoRange = "PQ"
-                // Most Dolby Vision profiles use hvc1.2.4.L150 as base codec
-                // Profile 8.1 variants (06, 08, 03, 01) use L150
+                // PQ-based Dolby Vision profiles
                 if dvProfile.profile == "08" {
+                    // Profile 8.1 uses hvc1.2.4.L150 as base codec
                     codecs = "hvc1.2.4.L150"
                 } else if dvProfile.profile == "05" {
-                    // Profile 5 keeps original base codec for compatibility
+                    // Profile 5 keeps original base codec for backward compatibility
                     // Leave codecs unchanged for dvh1.05.xx
+                } else if dvProfile.profile == "09" {
+                    // Profile 9 (Gaming) uses similar to Profile 8.1
+                    codecs = "hvc1.2.4.L150"
                 }
             }
         } else if isDolby {
@@ -146,6 +251,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             videoRange = "PQ" // Default to PQ for safety
         }
 
+        // Normalize framerate
         if let value = Double(framerate), value >= 60 {
             framerate = "60"
         }
@@ -153,6 +259,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         if supplementCodesc.count > 0 {
             supplementCodesc = ",SUPPLEMENTAL-CODECS=\"\(supplementCodesc)\""
         }
+        
         let content = """
         #EXT-X-STREAM-INF:AUDIO="audio"\(subtitlePlaceHolder),CODECS="\(codecs)"\(supplementCodesc),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(info.bandwidth),VIDEO-RANGE=\(videoRange)
         \(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)&rate=\(info.frame_rate ?? framerate)&width=\(info.width ?? 0)&host=\(URL(string: url)?.host ?? "none")&range=\(info.id)
@@ -213,7 +320,10 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     }
 
     private func addAudioPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
-        guard !videoCodecBlackList.contains(info.codecs) else { return }
+        guard isCodecSupported(info.codecs) else {
+            Logger.debug("Skipping unsupported audio codec: \(info.codecs)")
+            return
+        }
         let defaultStr = !hasAudioInMasterListAdded ? "YES" : "NO"
         let content = """
         #EXT-X-MEDIA:TYPE=AUDIO,DEFAULT=\(defaultStr),GROUP-ID="audio",NAME="Main",URI="\(URLs.customDashPrefix)\(videoInfo.count)"
@@ -286,7 +396,38 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         reset()
         hasSubtitle = subtitles.count > 0
         var videos = info.dash.video
-        if Settings.preferAvc {
+        
+        // Apply codec preference filtering
+        let codecPref = Settings.codecPreference
+        if codecPref != .auto {
+            let videosMap = Dictionary(grouping: videos, by: { $0.id })
+            for (key, values) in videosMap {
+                switch codecPref {
+                case .preferAV1:
+                    // Prefer AV1, fallback to HEVC, then AVC
+                    if values.contains(where: { $0.isAV1 }) {
+                        videos.removeAll(where: { $0.id == key && !$0.isAV1 })
+                    } else if values.contains(where: { $0.isHevc }) {
+                        videos.removeAll(where: { $0.id == key && $0.isAVC })
+                    }
+                case .preferHEVC:
+                    // Prefer HEVC, fallback to AVC
+                    if values.contains(where: { $0.isHevc }) {
+                        videos.removeAll(where: { $0.id == key && !$0.isHevc })
+                    }
+                case .preferAVC:
+                    // Prefer AVC for compatibility
+                    if values.contains(where: { $0.isAVC }) {
+                        videos.removeAll(where: { $0.id == key && !$0.isAVC })
+                    }
+                case .auto:
+                    break
+                }
+            }
+        }
+        
+        // Legacy support for old preferAvc setting
+        if Settings.preferAvc && codecPref == .auto {
             let videosMap = Dictionary(grouping: videos, by: { $0.id })
             for (key, values) in videosMap {
                 if values.contains(where: { !$0.isHevc }) {
@@ -484,7 +625,27 @@ extension VideoPlayURLInfo.DashInfo.DashMediaInfo {
     }
 
     var isHevc: Bool {
-        return codecs.starts(with: "hev") || codecs.starts(with: "hvc") || codecs.starts(with: "dvh1")
+        return codecs.starts(with: "hev") || codecs.starts(with: "hvc") || codecs.starts(with: "dvh1") || codecs.starts(with: "dvhe")
+    }
+    
+    var isAV1: Bool {
+        return codecs.starts(with: "av01") || codecs.starts(with: "av1")
+    }
+    
+    var isAVC: Bool {
+        return codecs.starts(with: "avc1")
+    }
+    
+    var codecType: String {
+        if isAV1 {
+            return "AV1"
+        } else if isHevc {
+            return "HEVC"
+        } else if isAVC {
+            return "AVC"
+        } else {
+            return "Unknown"
+        }
     }
 }
 

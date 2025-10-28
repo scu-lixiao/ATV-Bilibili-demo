@@ -548,18 +548,34 @@ struct HistoryData: DisplayData, Codable {
 //    let bangumi: BangumiData?
 }
 
-struct FavData: PlayableData, Codable {
+struct FavData: PlayableData, Codable, DisplayData {
     var cover: String
     var upper: VideoOwner
     var id: Int
     var type: Int?
     var title: String
     var ogv: Ogv?
+    var cnt_info: CntInfo?  // 添加统计信息字段
+    
     var ownerName: String { upper.name }
     var pic: URL? { URL(string: cover) }
+    
+    var viewCount: Int? {
+        return cnt_info?.play
+    }
+    
+    var replyCount: Int? {
+        return cnt_info?.reply
+    }
 
     struct Ogv: Codable, Hashable {
         let season_id: Int?
+    }
+    
+    struct CntInfo: Codable, Hashable {
+        let play: Int?    // 播放量
+        let reply: Int?   // 评论数
+        let collect: Int? // 收藏数
     }
 
     var aid: Int {
@@ -688,6 +704,8 @@ extension VideoDetail: DisplayData {
     }
 
     var date: String? { DateFormatter.stringFor(timestamp: View.pubdate) }
+    var viewCount: Int? { View.stat.view }
+    var replyCount: Int? { nil } // VideoDetail doesn't have reply count in API response
 }
 
 extension VideoDetail.Info: DisplayData, PlayableData {
@@ -700,6 +718,8 @@ extension VideoDetail.Info: DisplayData, PlayableData {
     }
 
     var date: String? { DateFormatter.stringFor(timestamp: pubdate) }
+    var viewCount: Int? { stat.view }
+    var replyCount: Int? { nil } // Info doesn't have reply count in API response
 }
 
 struct SubtitleResp: Codable {

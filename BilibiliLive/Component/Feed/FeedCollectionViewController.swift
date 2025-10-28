@@ -15,11 +15,15 @@ protocol DisplayData: Hashable {
     var pic: URL? { get }
     var avatar: URL? { get }
     var date: String? { get }
+    var viewCount: Int? { get }      // 播放数量
+    var replyCount: Int? { get }     // 评论数量
 }
 
 extension DisplayData {
     var avatar: URL? { return nil }
     var date: String? { return nil }
+    var viewCount: Int? { return nil }
+    var replyCount: Int? { return nil }
 }
 
 struct AnyDispplayData: Hashable {

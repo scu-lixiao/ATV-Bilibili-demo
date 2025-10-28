@@ -89,6 +89,22 @@ struct DynamicFeedData: Codable, PlayableData, DisplayData {
     var date: String? {
         return modules.module_author.pub_time
     }
+    
+    var viewCount: Int? {
+        guard let stat = modules.module_dynamic.major?.archive?.stat,
+              let playStr = stat.play else {
+            return nil
+        }
+        return Int(playStr)
+    }
+    
+    var replyCount: Int? {
+        guard let stat = modules.module_dynamic.major?.archive?.stat,
+              let replyStr = stat.reply else {
+            return nil
+        }
+        return Int(replyStr)
+    }
 
     let type: String
     let basic: Basic
@@ -123,6 +139,12 @@ struct DynamicFeedData: Codable, PlayableData, DisplayData {
                     let cover: String?
                     let desc: String?
                     let title: String?
+                    let stat: Stat?  // 添加统计信息（可选）
+                    
+                    struct Stat: Codable, Hashable {
+                        let play: String?   // 播放量（可选字符串格式）
+                        let reply: String?  // 评论数（可选字符串格式）
+                    }
                 }
 
                 struct Pgc: Codable, Hashable {

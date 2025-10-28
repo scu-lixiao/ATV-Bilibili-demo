@@ -263,6 +263,7 @@ enum ApiRequest {
             let cover: String
             let goto: String
             let rcmd_reason: String?
+            let player_args: PlayerArgs?  // 添加播放器参数，包含统计数据
 
             var ownerName: String {
                 return args.up_name ?? ""
@@ -273,11 +274,20 @@ enum ApiRequest {
             }
 
             var date: String? { rcmd_reason }
+            
+            var viewCount: Int? { player_args?.play }
+            var replyCount: Int? { player_args?.reply }
         }
 
         struct Args: Codable, Hashable {
             let up_name: String?
 //            let aid: Int?
+        }
+        
+        struct PlayerArgs: Codable, Hashable {
+            let play: Int?      // 播放数
+            let reply: Int?     // 评论数
+            let danmaku: Int?   // 弹幕数
         }
     }
 

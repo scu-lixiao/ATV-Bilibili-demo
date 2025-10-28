@@ -16,6 +16,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
 
     private let titleLabel = MarqueeLabel()
     private let upLabel = UILabel()
+    private let statsLabel = UILabel()  // 新增统计信息标签
     private let imageView = UIImageView()
     private let infoView = UIView()
     private let avatarView = UIImageView()
@@ -69,6 +70,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         stackView.axis = .vertical
         stackView.addArrangedSubview(titleLabel)
         stackView.addArrangedSubview(upLabel)
+        stackView.addArrangedSubview(statsLabel)  // 添加统计标签
         stackView.alignment = .leading
         stackView.spacing = 6
         stackView.setContentHuggingPriority(.required, for: .vertical)
@@ -81,11 +83,28 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         upLabel.textColor = UIColor(named: "titleColor")
         upLabel.adjustsFontSizeToFitWidth = true
         upLabel.minimumScaleFactor = 0.1
+        statsLabel.setContentHuggingPriority(.required, for: .vertical)
+        statsLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        statsLabel.textColor = ThemeManager.shared.textSecondaryColor
+        statsLabel.adjustsFontSizeToFitWidth = true
+        statsLabel.minimumScaleFactor = 0.1
     }
 
     func setup(data: any DisplayData) {
         titleLabel.text = data.title
         upLabel.text = [data.ownerName, data.date].compactMap({ $0 }).joined(separator: " · ")
+        
+        // 格式化并显示统计信息
+        var statsComponents: [String] = []
+        if let viewCount = data.viewCount {
+            statsComponents.append("▶︎ \(formatNumber(viewCount))")
+        }
+        if let replyCount = data.replyCount {
+            statsComponents.append("💬 \(formatNumber(replyCount))")
+        }
+        statsLabel.text = statsComponents.isEmpty ? "" : statsComponents.joined(separator: "  ")
+        statsLabel.isHidden = statsComponents.isEmpty
+        
         if var pic = data.pic {
             if pic.scheme == nil {
                 pic = URL(string: "http:\(pic.absoluteString)")!
@@ -99,6 +118,18 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
             avatarView.isHidden = true
         }
         updateStyle()
+    }
+    
+    /// 格式化数字为简洁形式（如 1.2万, 3.5亿）
+    private func formatNumber(_ number: Int) -> String {
+        let num = Double(number)
+        if num >= 100_000_000 {
+            return String(format: "%.1f亿", num / 100_000_000)
+        } else if num >= 10_000 {
+            return String(format: "%.1f万", num / 10_000)
+        } else {
+            return "\(number)"
+        }
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
@@ -146,6 +177,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         // 5. 文本颜色增强
         titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         upLabel.textColor = ThemeManager.shared.accentColor
+        statsLabel.textColor = ThemeManager.shared.accentColor.withAlphaComponent(0.8)  // 统计信息使用半透明强调色
 
         // 6. 轻微的边缘发光效果(不遮挡图片)
         applyGlowEffect()
@@ -168,6 +200,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         // 5. 恢复正常文本颜色
         titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         upLabel.textColor = ThemeManager.shared.textSecondaryColor
+        statsLabel.textColor = ThemeManager.shared.textSecondaryColor
 
         // 6. 移除发光效果
         removeGlowEffect()
@@ -210,6 +243,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         let style = styleOverride ?? Settings.displayStyle
         titleLabel.font = style.titleFont
         upLabel.font = style.upFont
+        statsLabel.font = style.statsFont  // 添加统计标签字体
     }
 
     @objc private func actionLongPress(sender: UILongPressGestureRecognizer) {
@@ -274,6 +308,17 @@ extension FeedDisplayStyle {
             return UIFont.systemFont(ofSize: 24)
         case .sideBar:
             return UIFont.systemFont(ofSize: 20, weight: .semibold)
+        }
+    }
+    
+    var statsFont: UIFont {
+        switch self {
+        case .large:
+            return UIFont.systemFont(ofSize: 22, weight: .regular)
+        case .normal:
+            return UIFont.systemFont(ofSize: 22, weight: .regular)
+        case .sideBar:
+            return UIFont.systemFont(ofSize: 18, weight: .regular)
         }
     }
 }
