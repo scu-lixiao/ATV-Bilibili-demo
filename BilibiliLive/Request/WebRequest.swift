@@ -123,21 +123,30 @@ enum WebRequest {
         requestData(method: method, url: url, parameters: parameters, headers: headers, noCookie: noCookie) { response in
             switch response {
             case let .success(data):
-                let json = JSON(data)
-                let errorCode = json["code"].intValue
-                if errorCode != 0 {
-                    let message = json["message"].stringValue
-                    print(errorCode, message)
-                    complete?(.failure(.statusFail(code: errorCode, message: message)))
-                    return
+                // tvOS 26 优化：JSON 解析在后台线程执行
+                Task {
+                    let result = await parseJSON(data: data, dataObj: dataObj, url: url)
+                    complete?(result)
                 }
-                let dataj = json[dataObj]
-                print("\(url) response: \(json)")
-                complete?(.success(dataj))
             case let .failure(err):
                 complete?(.failure(err))
             }
         }
+    }
+    
+    // tvOS 26 性能优化：@concurrent 标记允许 JSON 解析在后台线程池执行
+    @concurrent
+    private static func parseJSON(data: Data, dataObj: String, url: URLConvertible) async -> Result<JSON, RequestError> {
+        let json = JSON(data)
+        let errorCode = json["code"].intValue
+        if errorCode != 0 {
+            let message = json["message"].stringValue
+            print(errorCode, message)
+            return .failure(.statusFail(code: errorCode, message: message))
+        }
+        let dataj = json[dataObj]
+        print("\(url) response: \(json)")
+        return .success(dataj)
     }
 
     static func request<T: Decodable>(method: HTTPMethod = .get,

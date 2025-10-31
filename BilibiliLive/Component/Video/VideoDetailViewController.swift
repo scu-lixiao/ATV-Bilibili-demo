@@ -104,6 +104,7 @@ class VideoDetailViewController: UIViewController {
         pageCollectionView.collectionViewLayout = makePageCollectionViewLayout()
         recommandCollectionView.register(RelatedVideoCell.self, forCellWithReuseIdentifier: String(describing: RelatedVideoCell.self))
         ugcCollectionView.register(RelatedVideoCell.self, forCellWithReuseIdentifier: String(describing: RelatedVideoCell.self))
+        replysCollectionView.register(UINib(nibName: ReplyCell.identifier, bundle: nil), forCellWithReuseIdentifier: ReplyCell.identifier)
         recommandCollectionView.collectionViewLayout = makeRelatedVideoCollectionViewLayout()
         ugcCollectionView.collectionViewLayout = makeRelatedVideoCollectionViewLayout()
         noteView.onPrimaryAction = {
@@ -359,16 +360,22 @@ class VideoDetailViewController: UIViewController {
         }
 
         WebRequest.requestReplys(aid: aid) { [weak self] replys in
-            self?.replys = replys
-            self?.replysCollectionView.reloadData()
+            DispatchQueue.main.async {
+                self?.replys = replys
+                self?.replysCollectionView.reloadData()
+            }
         }
 
         WebRequest.requestLikeStatus(aid: aid) { [weak self] isLiked in
-            self?.likeButton.isOn = isLiked
+            DispatchQueue.main.async {
+                self?.likeButton.isOn = isLiked
+            }
         }
 
         WebRequest.requestCoinStatus(aid: aid) { [weak self] coins in
-            self?.didSentCoins = coins
+            DispatchQueue.main.async {
+                self?.didSentCoins = coins
+            }
         }
 
         if isBangumi {
@@ -378,7 +385,9 @@ class VideoDetailViewController: UIViewController {
         }
 
         WebRequest.requestFavoriteStatus(aid: aid) { [weak self] isFavorited in
-            self?.favButton.isOn = isFavorited
+            DispatchQueue.main.async {
+                self?.favButton.isOn = isFavorited
+            }
         }
     }
 

@@ -652,17 +652,30 @@ extension VideoPlayURLInfo.DashInfo.DashMediaInfo {
 actor SidxDownloader {
     private enum CacheEntry {
         case inProgress(Task<SidxParseUtil.Sidx?, Never>)
-        case ready(SidxParseUtil.Sidx?)
+        case ready(SidxParseUtil.Sidx?, timestamp: Date)
     }
 
     private var cache: [VideoPlayURLInfo.DashInfo.DashMediaInfo: CacheEntry] = [:]
+    
+    // tvOS 26 优化：缓存大小限制和过期策略
+    private let maxCacheSize = 50 // 最多缓存 50 个 sidx 数据
+    private let cacheExpirationInterval: TimeInterval = 3600 // 1 小时过期
 
     func sidx(from info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxParseUtil.Sidx? {
+        // 清理过期缓存
+        cleanExpiredCache()
+        
         if let cached = cache[info] {
             switch cached {
-            case let .ready(sidx):
-                Logger.debug("sidx cache hit \(info.id)")
-                return sidx
+            case let .ready(sidx, timestamp):
+                // 检查是否过期
+                if Date().timeIntervalSince(timestamp) < cacheExpirationInterval {
+                    Logger.debug("sidx cache hit \(info.id)")
+                    return sidx
+                } else {
+                    Logger.debug("sidx cache expired \(info.id)")
+                    cache.removeValue(forKey: info)
+                }
             case let .inProgress(sidx):
                 Logger.debug("sidx cache wait \(info.id)")
                 return await sidx.value
@@ -676,9 +689,47 @@ actor SidxDownloader {
         cache[info] = .inProgress(task)
 
         let sidx = await task.value
-        cache[info] = .ready(sidx)
+        cache[info] = .ready(sidx, timestamp: Date())
         Logger.debug("get sidx \(info.id)")
+        
+        // 限制缓存大小
+        enforceCacheSizeLimit()
+        
         return sidx
+    }
+    
+    // 清理过期的缓存条目
+    private func cleanExpiredCache() {
+        let now = Date()
+        cache = cache.filter { _, entry in
+            if case let .ready(_, timestamp) = entry {
+                return now.timeIntervalSince(timestamp) < cacheExpirationInterval
+            }
+            return true // 保留进行中的任务
+        }
+    }
+    
+    // 限制缓存大小，使用 LRU 策略
+    private func enforceCacheSizeLimit() {
+        guard cache.count > maxCacheSize else { return }
+        
+        // 只保留最近的条目
+        let sortedEntries = cache.filter { _, entry in
+            if case .ready = entry { return true }
+            return false
+        }.sorted { lhs, rhs in
+            guard case let .ready(_, lhsTime) = lhs.value,
+                  case let .ready(_, rhsTime) = rhs.value else { return false }
+            return lhsTime > rhsTime
+        }
+        
+        // 移除最旧的条目
+        let toRemove = sortedEntries.dropFirst(maxCacheSize)
+        for (key, _) in toRemove {
+            cache.removeValue(forKey: key)
+        }
+        
+        Logger.debug("sidx cache size limited to \(cache.count)")
     }
 
     private func downloadSidx(info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxParseUtil.Sidx? {

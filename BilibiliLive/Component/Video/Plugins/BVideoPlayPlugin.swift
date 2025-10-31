@@ -62,6 +62,14 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
     @MainActor
     func prepare(toPlay asset: AVURLAsset) async {
         let playerItem = AVPlayerItem(asset: asset)
+        
+        // tvOS 26 性能优化：减少缓冲区大小以降低网络负载
+        // 参考：https://medium.com/@sojik/avplayer-video-optimization-part-1-2a45ea002ea2
+        playerItem.preferredForwardBufferDuration = TimeInterval(1.0)
+        
+        // 暂停时不使用网络资源，节省带宽
+        playerItem.canUseNetworkResourcesForLiveStreamingWhilePaused = false
+        
         let player = AVPlayer(playerItem: playerItem)
         playerVC?.player = player
     }

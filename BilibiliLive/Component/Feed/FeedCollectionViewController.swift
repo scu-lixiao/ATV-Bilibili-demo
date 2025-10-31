@@ -69,11 +69,23 @@ class FeedCollectionViewController: UIViewController {
 
     private var _displayData = [AnyDispplayData]() {
         didSet {
-            var snapshot = NSDiffableDataSourceSnapshot<Section, AnyDispplayData>()
-            snapshot.appendSections(Section.allCases)
-            snapshot.appendItems(_displayData, toSection: .main)
-            dataSource.apply(snapshot)
+            // tvOS 26 优化：在后台线程计算 snapshot，减少主线程负担
+            Task {
+                let snapshot = await buildSnapshot(items: _displayData)
+                await MainActor.run {
+                    dataSource.apply(snapshot, animatingDifferences: true)
+                }
+            }
         }
+    }
+    
+    // tvOS 26 性能优化：@concurrent 标记允许 snapshot 构建在后台线程执行
+    @concurrent
+    private func buildSnapshot(items: [AnyDispplayData]) async -> NSDiffableDataSourceSnapshot<Section, AnyDispplayData> {
+        var snapshot = NSDiffableDataSourceSnapshot<Section, AnyDispplayData>()
+        snapshot.appendSections(Section.allCases)
+        snapshot.appendItems(items, toSection: .main)
+        return snapshot
     }
 
     private var isLoading = false
@@ -93,12 +105,21 @@ class FeedCollectionViewController: UIViewController {
 
     func appendData(displayData: [any DisplayData]) {
         isLoading = false
-        _displayData.append(contentsOf: displayData.map { AnyDispplayData(data: $0) }.filter({ !_displayData.contains($0) }))
+        
+        // tvOS 26 优化：使用 Set 提升去重性能
+        let existingSet = Set(_displayData)
+        let newData = displayData
+            .map { AnyDispplayData(data: $0) }
+            .filter { !existingSet.contains($0) }
+        
+        _displayData.append(contentsOf: newData)
+        
         if displayData.count < pageSize - 5 || displayData.count == 0 {
             finished = true
             return
         }
 
+        // tvOS 26 优化：预加载策略，提前触发加载
         if _displayData.count < 12 {
             isLoading = true
             loadMore?()

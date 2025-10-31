@@ -112,26 +112,38 @@ class VideoDanmuProvider: DanmuProviderProtocol {
             return
         }
 
-        var dms = reply.elems
-            .filter { $0.mode <= 5 }
+        // tvOS 26 优化：使用 @concurrent 将弹幕处理移到后台线程池
+        let processedDanmus = await processDanmus(
+            reply.elems,
+            enableFilter: enableDanmuFilter,
+            enableRemoveDup: enableDanmuRemoveDup
+        )
+        
+        segmentDanmus[idx] = processedDanmus
 
-        if enableDanmuRemoveDup {
+        Logger.debug("[dm] cid:\(cid!) sidx:\(idx) danmu cnt: \(processedDanmus.count)")
+    }
+    
+    // tvOS 26 性能优化：@concurrent 标记允许此函数在后台线程池执行
+    // 减少主线程负载，提升弹幕解析性能
+    @concurrent
+    private func processDanmus(_ elems: [DanmakuElem], enableFilter: Bool, enableRemoveDup: Bool) async -> [Danmu] {
+        var dms = elems.filter { $0.mode <= 5 }
+
+        if enableRemoveDup {
             var set = Set<String>()
             dms = dms.filter { set.insert($0.content).inserted }
         }
 
-        if enableDanmuFilter {
+        if enableFilter {
             dms = dms.filter {
                 VideoDanmuFilter.shared.accept($0.content)
             }
         }
 
-        var models = dms
-            .map { Danmu(dm: $0) }
+        var models = dms.map { Danmu(dm: $0) }
         models.sort { $0.time < $1.time }
-        segmentDanmus[idx] = models
-
-        Logger.debug("[dm] cid:\(cid!) sidx:\(idx) danmu cnt: \(dms.count)")
+        return models
     }
 
     private let advancedDuration = 30 // 提前x秒加载下段弹幕
