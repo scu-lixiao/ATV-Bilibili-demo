@@ -60,16 +60,42 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
     private func startDebug() {
         if debugView == nil {
             debugView = UILabel()
-            debugView?.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+            
+            // tvOS 26 Liquid Glass 背景优化
+            if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+                // 使用 Liquid Glass 作为调试信息背景
+                let glassBackground = LiquidGlassView.popup(
+                    tintColor: UIColor.black.withAlphaComponent(0.5)
+                )
+                containerView?.addSubview(glassBackground)
+                glassBackground.snp.makeConstraints { make in
+                    make.top.equalToSuperview().offset(12)
+                    make.right.equalToSuperview().offset(-12)
+                    make.width.equalTo(800)
+                }
+                
+                // 将 label 放在 glass 视图的 contentView 上
+                glassBackground.contentView.addSubview(debugView!)
+                debugView?.snp.makeConstraints { make in
+                    make.edges.equalToSuperview().inset(12)
+                }
+                
+                // materialize 动画
+                glassBackground.materialize(duration: 0.3)
+            } else {
+                // 降级方案：传统背景
+                debugView?.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+                containerView?.addSubview(debugView!)
+                debugView?.snp.makeConstraints { make in
+                    make.top.equalToSuperview().offset(12)
+                    make.right.equalToSuperview().offset(-12)
+                    make.width.equalTo(800)
+                }
+            }
+            
             debugView?.textColor = UIColor.white
-            containerView?.addSubview(debugView!)
             debugView?.numberOfLines = 0
             debugView?.font = UIFont.systemFont(ofSize: 26)
-            debugView?.snp.makeConstraints { make in
-                make.top.equalToSuperview().offset(12)
-                make.right.equalToSuperview().offset(-12)
-                make.width.equalTo(800)
-            }
         }
         debugView?.isHidden = false
         debugTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in

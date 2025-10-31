@@ -165,17 +165,39 @@ class VideoDetailViewController: UIViewController {
     }
 
     // MARK: - Theme Setup
+    
+    /// 配置 Liquid Glass 主容器（tvOS 26 优化）
+    private func setupLiquidGlassContainer() {
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // 使用 Liquid Glass 材质
+            let glassEffect = ThemeManager.shared.createEffect(
+                style: .surface,
+                tintColor: GlassEffectConfiguration.videoDetail
+            )
+            effectContainerView.effect = glassEffect
+            
+            // 添加 materialize 入场动画
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else { return }
+                let targetEffect = self.effectContainerView.effect
+                self.effectContainerView.effect = nil
+                
+                UIView.animate(withDuration: 0.4, delay: 0, options: .curveEaseOut) {
+                    self.effectContainerView.effect = targetEffect
+                }
+            }
+        } else {
+            // 降级方案：使用传统模糊
+            effectContainerView.effect = ThemeManager.shared.createEffect(style: .surface)
+        }
+    }
 
     private func setupTheme() {
         // 应用深邃纯黑背景
         view.backgroundColor = ThemeManager.shared.backgroundColor
 
-        // 配置模糊效果视图 - 使用主题材质
-        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
-            effectContainerView.effect = ThemeManager.shared.createEffect(style: .surface)
-        } else {
-            effectContainerView.effect = ThemeManager.shared.createEffect(style: .surface)
-        }
+        // 配置 Liquid Glass 容器视图（tvOS 26 优化）
+        setupLiquidGlassContainer()
 
         // 文本颜色 - 主要文本
         titleLabel.textColor = ThemeManager.shared.textPrimaryColor

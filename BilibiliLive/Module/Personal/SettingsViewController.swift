@@ -431,12 +431,22 @@ extension SettingsViewController {
         // CollectionView 透明背景,显示底层渐变
         collectionView.backgroundColor = .clear
 
-        // 如果支持 Liquid Glass,可以为整个视图添加微妙的材质效果
+        // tvOS 26 Liquid Glass 背景优化
+        setupLiquidGlassBackground()
+    }
+    
+    /// 配置 Liquid Glass 背景（tvOS 26 优化）
+    private func setupLiquidGlassBackground() {
         if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
-            // 为设置面板添加轻微的 Liquid Glass 背景
-            let glassBackground = LiquidGlassView.surface(tintColor: ThemeManager.shared.surfaceColor.withAlphaComponent(0.3))
+            // 为设置面板添加精细化 Liquid Glass 背景
+            let glassBackground = LiquidGlassView.surface(
+                tintColor: GlassEffectConfiguration.settingsPanel
+            )
             view.insertSubview(glassBackground, at: 0)
             glassBackground.snp.makeConstraints { $0.edges.equalToSuperview() }
+            
+            // 添加 materialize 入场动画
+            glassBackground.materialize(duration: 0.35)
         }
     }
 }

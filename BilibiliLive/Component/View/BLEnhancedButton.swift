@@ -185,6 +185,11 @@ class BLEnhancedButton: UIControl {
                 self.addMotionEffect(motionEffect)
             }
             
+            // tvOS 26 Liquid Glass 焦点效果
+            if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+                self.applyLiquidGlassFocusEffect()
+            }
+            
         } completion: { [weak self] in
             // 焦点后启动脉动动画
             self?.startPulseAnimation()
@@ -215,10 +220,42 @@ class BLEnhancedButton: UIControl {
             if let motionEffect = self.motionEffect {
                 self.removeMotionEffect(motionEffect)
             }
+            
+            // tvOS 26 Liquid Glass 取消焦点效果
+            if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+                self.removeLiquidGlassFocusEffect()
+            }
         }
         
         // 隐藏渐变
         animateGradient(show: false)
+    }
+    
+    /// 应用 Liquid Glass 焦点效果（tvOS 26+）
+    @available(tvOS 26.0, *)
+    private func applyLiquidGlassFocusEffect() {
+        // 切换到交互式 Liquid Glass 效果
+        let glassEffect = UIGlassEffect(style: .clear)
+        glassEffect.isInteractive = true
+        glassEffect.tintColor = buttonType == .action ? 
+            GlassEffectConfiguration.playerControl : 
+            GlassEffectConfiguration.overlay
+        
+        // 平滑过渡
+        UIView.animate(withDuration: 0.25) {
+            self.effectView.effect = glassEffect
+        }
+    }
+    
+    /// 移除 Liquid Glass 焦点效果（tvOS 26+）
+    @available(tvOS 26.0, *)
+    private func removeLiquidGlassFocusEffect() {
+        // 恢复常规效果
+        let normalEffect = ThemeManager.shared.createEffect(style: .control)
+        
+        UIView.animate(withDuration: 0.25) {
+            self.effectView.effect = normalEffect
+        }
     }
     
     private func startPulseAnimation() {
