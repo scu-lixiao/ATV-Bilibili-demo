@@ -128,6 +128,10 @@ class FeedCollectionViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        // tvOS 26 Liquid Glass Feed 背景优化
+        setupLiquidGlassFeedBackground()
+        
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeCollectionViewLayout())
         view.addSubview(collectionView)
         collectionView.snp.makeConstraints { make in
@@ -135,6 +139,20 @@ class FeedCollectionViewController: UIViewController {
         }
         collectionView.dataSource = dataSource
         collectionView.delegate = self
+        
+        // 透明背景，显示底层 Liquid Glass
+        collectionView.backgroundColor = .clear
+    }
+    
+    /// 配置 Liquid Glass Feed 背景（tvOS 26 优化）
+    private func setupLiquidGlassFeedBackground() {
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // Feed 流使用轻量 glass 效果
+            applyFeedGlassBackground()
+        } else {
+            // 降级方案：深邃黑色背景
+            view.backgroundColor = ThemeManager.shared.backgroundColor
+        }
     }
 
     // MARK: - Private

@@ -148,7 +148,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         }, completion: nil)
     }
 
-    /// 应用焦点样式 - 深邃暗黑主题焦点效果
+    /// 应用焦点样式 - tvOS 26 Liquid Glass 深邃暗黑主题焦点效果
     private func applyFocusedStyle() {
         // 1. 缩放效果 - 轻微放大
         transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
@@ -177,10 +177,10 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         // 5. 文本颜色增强
         titleLabel.textColor = ThemeManager.shared.textPrimaryColor
         upLabel.textColor = ThemeManager.shared.accentColor
-        statsLabel.textColor = ThemeManager.shared.accentColor.withAlphaComponent(0.8)  // 统计信息使用半透明强调色
+        statsLabel.textColor = ThemeManager.shared.accentColor.withAlphaComponent(0.8)
 
-        // 6. 轻微的边缘发光效果(不遮挡图片)
-        applyGlowEffect()
+        // 6. tvOS 26 Liquid Glass 发光效果
+        applyLiquidGlassGlow()
     }
 
     /// 移除焦点样式
@@ -206,9 +206,30 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         removeGlowEffect()
     }
 
-    /// 应用轻微的发光效果 - 不遮挡图片
+    /// 应用 tvOS 26 Liquid Glass 发光效果
+    private func applyLiquidGlassGlow() {
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // 使用 Liquid Glass 交互式效果
+            let glowLayer = CALayer()
+            glowLayer.name = "liquidGlassGlow"
+            glowLayer.frame = bounds
+            glowLayer.cornerRadius = 12
+            glowLayer.borderColor = ThemeManager.shared.accentColor.withAlphaComponent(0.4).cgColor
+            glowLayer.borderWidth = 2
+            glowLayer.shadowColor = ThemeManager.shared.accentColor.cgColor
+            glowLayer.shadowOpacity = 0.6
+            glowLayer.shadowOffset = .zero
+            glowLayer.shadowRadius = 16
+            
+            layer.insertSublayer(glowLayer, at: 0)
+        } else {
+            // 降级方案：传统发光效果
+            applyGlowEffect()
+        }
+    }
+    
+    /// 应用轻微的发光效果 - 降级方案
     private func applyGlowEffect() {
-        // 为卡片容器添加内发光效果(不影响 imageView 内容)
         let glowLayer = CALayer()
         glowLayer.name = "glowLayer"
         glowLayer.frame = bounds
@@ -220,12 +241,14 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         glowLayer.shadowOffset = .zero
         glowLayer.shadowRadius = 12
 
-        // 插入到底层,不遮挡任何内容
         layer.insertSublayer(glowLayer, at: 0)
     }
 
     /// 移除发光效果
     private func removeGlowEffect() {
+        // 移除 Liquid Glass 效果
+        layer.sublayers?.first(where: { $0.name == "liquidGlassGlow" })?.removeFromSuperlayer()
+        // 移除传统效果
         layer.sublayers?.first(where: { $0.name == "glowLayer" })?.removeFromSuperlayer()
     }
 

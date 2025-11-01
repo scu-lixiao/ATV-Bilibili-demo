@@ -18,6 +18,10 @@ class CommonPlayerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        // tvOS 26 Liquid Glass 播放器背景优化
+        setupLiquidGlassPlayerBackground()
+        
         addChild(playerVC)
         view.addSubview(playerVC.view)
         playerVC.didMove(toParent: self)
@@ -33,6 +37,17 @@ class CommonPlayerViewController: UIViewController {
         }
         observations.insert(playerObservation)
         activePlugins.forEach { $0.playerDidLoad(playerVC: playerVC) }
+    }
+    
+    /// 配置 Liquid Glass 播放器背景（tvOS 26 优化）
+    private func setupLiquidGlassPlayerBackground() {
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // 播放器使用最轻量的 glass 效果，确保内容为焦点
+            applyPlayerGlassBackground()
+        } else {
+            // 降级方案：深邃黑色背景
+            view.backgroundColor = ThemeManager.shared.backgroundColor
+        }
     }
 
     override func viewDidDisappear(_ animated: Bool) {

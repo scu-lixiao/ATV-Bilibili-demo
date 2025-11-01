@@ -26,6 +26,9 @@ class SearchResultViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        // tvOS 26 Liquid Glass 搜索背景优化
+        setupLiquidGlassSearchBackground()
 
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: createLayout())
         collectionView.delegate = self
@@ -34,6 +37,10 @@ class SearchResultViewController: UIViewController {
         collectionView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
+        
+        // 透明背景，显示底层 Liquid Glass
+        collectionView.backgroundColor = .clear
+        
         configureDataSource()
 
         cancellable = $searchText
@@ -75,6 +82,17 @@ class SearchResultViewController: UIViewController {
                     dataSource.apply(currentSnapshot)
                 }
             }
+    }
+    
+    /// 配置 Liquid Glass 搜索背景（tvOS 26 优化）
+    private func setupLiquidGlassSearchBackground() {
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            // 搜索界面使用清晰的 glass 效果
+            applySearchGlassBackground()
+        } else {
+            // 降级方案：深邃黑色背景
+            view.backgroundColor = ThemeManager.shared.backgroundColor
+        }
     }
 }
 
