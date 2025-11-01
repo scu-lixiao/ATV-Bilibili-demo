@@ -43,7 +43,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        // 根据用户设置配置音频会话
+        let enablePassthrough = Settings.audioPassthrough
+        AudioSessionManager.shared.configureAudioSession(enablePassthrough: enablePassthrough)
     }
 
     func showLogin() {

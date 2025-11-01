@@ -53,7 +53,25 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     var infoDebugText: String {
         let videoCodec = playInfo?.dash.video.map({ $0.codecs }).prefix(5).joined(separator: ",") ?? "nil"
         let audioCodec = playInfo?.dash.audio?.map({ $0.codecs }).prefix(5).joined(separator: ",") ?? "nil"
-        return "video codecs: \(videoCodec), audio: \(audioCodec)"
+        var info = "video codecs: \(videoCodec), audio: \(audioCodec)"
+        
+        // 添加音频格式详细信息
+        if Settings.losslessAudio {
+            if playInfo?.dash.dolby?.audio != nil {
+                info += "\n🎵 Dolby Atmos 音频已启用"
+            } else if playInfo?.dash.flac?.audio != nil {
+                info += "\n🎵 FLAC 无损音频已启用"
+            }
+        }
+        
+        // 添加音频会话信息
+        if #available(tvOS 26.0, *), Settings.audioPassthrough {
+            info += "\n🔊 音频直通模式: 准备就绪"
+        } else {
+            info += "\n🔊 音频输出: LPCM (tvOS标准)"
+        }
+        
+        return info
     }
 
     let videoCodecBlackList = ["avc1.640034"] // high 5.2 is not supported
@@ -442,20 +460,27 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             }
         }
 
+        // 音频处理：优先请求无损音频
+        // 1. Dolby Atmos (E-AC3-JOC) - 对象式空间音频
+        // 2. FLAC - 无损压缩音频
+        // 3. 标准音频 (AAC) - 后备选项
         if Settings.losslessAudio {
             if let audios = info.dash.dolby?.audio {
+                Logger.info("✓ 加载 Dolby Atmos 音频")
                 for audio in audios {
                     for url in BVideoUrlUtils.sortUrls(base: audio.base_url, backup: audio.backup_url) {
                         addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)
                     }
                 }
             } else if let audio = info.dash.flac?.audio {
+                Logger.info("✓ 加载 FLAC 无损音频")
                 for url in audio.playableURLs {
                     addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)
                 }
             }
         }
 
+        // 标准音频轨道（AAC等）
         for audio in info.dash.audio ?? [] {
             for url in audio.playableURLs {
                 addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)

@@ -143,6 +143,54 @@ class SettingsViewController: UIViewController {
                 }
                 Toggle(title: "Avc优先(卡顿尝试开启)", setting: Settings.preferAvc, onChange: Settings.preferAvc.toggle())
                 Toggle(title: "无损音频和杜比全景声", setting: Settings.losslessAudio, onChange: Settings.losslessAudio.toggle())
+                
+                // 音频直通模式（tvOS 26+）
+                if AudioSessionManager.shared.isPassthroughAvailable {
+                    Toggle(title: "音频直通模式 (实验性)", 
+                           setting: Settings.audioPassthrough, 
+                           onChange: Settings.audioPassthrough.toggle()) { enabled in
+                        // 切换后重新配置音频会话
+                        AudioSessionManager.shared.configureAudioSession(enablePassthrough: enabled)
+                        
+                        // 显示详细提示信息
+                        let message = enabled ? 
+                            """
+                            已启用音频直通模式（实验性）。
+                            
+                            ⚠️ 重要说明：
+                            • tvOS 26.0 的音频直通 API 尚未完全实现
+                            • 当前配置已最小化音频处理，但完整的 HDMI 比特流直通可能需要等待 tvOS 26.1+ 更新
+                            • 音频将尽可能以原始格式输出，保留 Dolby Atmos 元数据
+                            • 如遇到声音问题，请关闭此选项
+                            
+                            建议：保持关注 tvOS 系统更新
+                            """ :
+                            "已关闭音频直通模式。音频将由 tvOS 处理后以 LPCM 格式输出。"
+                        
+                        let alert = UIAlertController(title: "音频直通模式", message: message, preferredStyle: .alert)
+                        alert.addAction(.init(title: "了解", style: .default))
+                        self.present(alert, animated: true)
+                    }
+                    
+                    // 音频信息按钮
+                    AudioInfoButton(title: "查看音频信息", currentInfo: "点击查看") {
+                        let info = AudioSessionManager.shared.getAudioOutputInfo()
+                        let alert = UIAlertController(title: "音频会话信息", message: info, preferredStyle: .alert)
+                        alert.addAction(.init(title: "关闭", style: .default))
+                        alert.addAction(.init(title: "查看指南", style: .default) { _ in
+                            // 这里可以打开音频指南文档
+                            let guideAlert = UIAlertController(
+                                title: "音频处理指南", 
+                                message: "详细的音频设置说明请参考项目文档：\n\ndoc/AUDIO_PROCESSING_GUIDE.md\n\n或在GitHub查看完整文档。",
+                                preferredStyle: .alert
+                            )
+                            guideAlert.addAction(.init(title: "知道了", style: .default))
+                            self.present(guideAlert, animated: true)
+                        })
+                        self.present(alert, animated: true)
+                    }
+                }
+                
                 Toggle(title: "匹配视频内容", setting: Settings.contentMatch, onChange: Settings.contentMatch.toggle())
                 Toggle(title: "仅在HDR视频匹配视频内容", setting: Settings.contentMatchOnlyInHDR, onChange: Settings.contentMatchOnlyInHDR.toggle())
             }
@@ -257,6 +305,12 @@ extension SettingsViewController {
             onChange()
             extraAction?(setting())
             update()
+        }
+    }
+    
+    func AudioInfoButton(title: String, currentInfo: String, onTap: @escaping () -> Void) -> CellModel {
+        return CellModel(title: title, desp: currentInfo) { _ in
+            onTap()
         }
     }
 

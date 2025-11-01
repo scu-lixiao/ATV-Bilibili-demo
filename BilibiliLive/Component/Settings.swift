@@ -53,6 +53,9 @@ enum Settings {
 
     @UserDefault("Settings.losslessAudio", defaultValue: false)
     static var losslessAudio: Bool
+    
+    @UserDefault("Settings.audioPassthrough", defaultValue: false)
+    static var audioPassthrough: Bool
 
     @UserDefault("Settings.preferAvc", defaultValue: false)
     static var preferAvc: Bool

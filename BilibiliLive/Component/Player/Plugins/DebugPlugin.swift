@@ -159,12 +159,31 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         let averageVideoBitrate = item.averageVideoBitrate
         let indicatedBitrate = item.indicatedBitrate
         let observedBitrate = item.observedBitrate
+        
+        // 获取音频信息
+        var audioInfo = ""
+        if let tracks = player.currentItem?.tracks {
+            for track in tracks where track.assetTrack?.mediaType == .audio {
+                if let assetTrack = track.assetTrack {
+                    let formatDescriptions = assetTrack.formatDescriptions as! [CMFormatDescription]
+                    if let audioDesc = formatDescriptions.first,
+                       let basicDesc = CMAudioFormatDescriptionGetStreamBasicDescription(audioDesc) {
+                        let channels = basicDesc.pointee.mChannelsPerFrame
+                        let sampleRate = basicDesc.pointee.mSampleRate
+                        audioInfo = "Audio: \(channels)ch, \(Int(sampleRate))Hz"
+                        break // 只需要第一个音频轨道信息
+                    }
+                }
+            }
+        }
+        
         logs += """
         uri:\(uri), ip:\(addr), change:\(changes)
         drop:\(dropped) stalls:\(stalls)
         bitrate audio:\(bitrateStr(averageAudioBitrate)), video: \(bitrateStr(averageVideoBitrate))
         observedBitrate:\(bitrateStr(observedBitrate))
         indicatedAverageBitrate:\(bitrateStr(indicatedBitrate))
+        \(audioInfo)
         """
 
         if let additionDebugInfo = additionDebugInfo?() {
