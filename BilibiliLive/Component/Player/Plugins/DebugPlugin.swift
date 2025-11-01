@@ -10,6 +10,7 @@ import UIKit
 
 class DebugPlugin: NSObject, CommonPlayerPlugin {
     private var debugView: UILabel?
+    private var glassBackgroundView: UIView?  // 保存glass背景引用以便清理
     private weak var containerView: UIView?
     private var debugTimer: Timer?
     private weak var player: AVPlayer?
@@ -67,6 +68,7 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
                 let glassBackground = LiquidGlassView.popup(
                     tintColor: UIColor.black.withAlphaComponent(0.5)
                 )
+                glassBackgroundView = glassBackground  // 保存引用
                 containerView?.addSubview(glassBackground)
                 glassBackground.snp.makeConstraints { make in
                     make.top.equalToSuperview().offset(12)
@@ -98,6 +100,7 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
             debugView?.font = UIFont.systemFont(ofSize: 26)
         }
         debugView?.isHidden = false
+        glassBackgroundView?.isHidden = false  // 显示glass背景
         debugTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             let info = self?.fetchDebugInfo()
             self?.debugView?.text = info
@@ -108,6 +111,29 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         debugTimer?.invalidate()
         debugTimer = nil
         debugView?.isHidden = true
+        
+        // 修复：隐藏或移除glass背景视图
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            if let glassView = glassBackgroundView as? LiquidGlassView {
+                // 使用 dematerialize 动画优雅地隐藏
+                glassView.dematerialize(duration: 0.3)
+                // 在动画后延迟清理
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.glassBackgroundView?.removeFromSuperview()
+                    self?.glassBackgroundView = nil
+                    self?.debugView?.removeFromSuperview()
+                    self?.debugView = nil
+                }
+            } else {
+                glassBackgroundView?.removeFromSuperview()
+                glassBackgroundView = nil
+                debugView?.removeFromSuperview()
+                debugView = nil
+            }
+        } else {
+            // 传统背景直接移除
+            glassBackgroundView?.isHidden = true
+        }
     }
 
     private func fetchDebugInfo() -> String {

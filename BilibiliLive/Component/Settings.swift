@@ -330,13 +330,13 @@ extension MediaQualityEnum {
         case .quality_2160p:
             return 144 // 0b10010000: DASH + 4K
         case .quality_hdr10:
-            return 400 // 0b110010000: DASH + 4K + HDR
+            return 976 // 0b1111010000: DASH + 4K + HDR + Dolby (添加512位以请求杜比视界格式)
         case .quality_hdr10plus:
-            return 400 // Same as HDR10, distinction comes from qn
+            return 976 // 添加512位以请求杜比视界格式，与HDR10+共存
         case .quality_hdr_dolby:
             return 976 // 0b1111010000: DASH + 4K + HDR + Dolby
         case .quality_hlg:
-            return 400 // 0b110010000: DASH + 4K + HDR
+            return 976 // 添加512位以请求杜比视界格式，与HLG共存
         }
     }
 }
