@@ -11,6 +11,34 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
     private weak var playerVC: AVPlayerViewController?
     private var playerDelegate: BilibiliVideoResourceLoaderDelegate?
     private let playData: PlayerDetailData
+    
+    // 暴露视频源 URL 信息供其他插件访问（如 DebugPlugin）
+    var currentVideoURLInfo: String {
+        guard let playerDelegate = playerDelegate else {
+            return "Video URL: Not loaded"
+        }
+        
+        var urlInfo = ""
+        if let playInfo = playerDelegate.playInfo {
+            // 获取视频和音频的 URL 信息
+            if let videoURL = playInfo.dash.video.first?.base_url {
+                urlInfo += "Video URL: \(videoURL)\n"
+            }
+            if let audioURL = playInfo.dash.audio?.first?.base_url {
+                urlInfo += "Audio URL: \(audioURL)\n"
+            }
+            
+            // 添加 HDR 信息
+            if playerDelegate.isHDR {
+                urlInfo += "🎨 HDR/Dolby Vision Enabled\n"
+            }
+        }
+        
+        // 添加其他调试信息
+        urlInfo += playerDelegate.infoDebugText
+        
+        return urlInfo
+    }
 
     init(detailData: PlayerDetailData) {
         playData = detailData

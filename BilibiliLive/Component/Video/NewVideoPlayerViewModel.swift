@@ -172,6 +172,15 @@ class VideoPlayerViewModel {
         let danmu = DanmuViewPlugin(provider: danmuProvider)
         let upnp = BUpnpPlugin(duration: data.detail?.View.duration)
         let debug = DebugPlugin()
+        
+        // 设置 debug 插件的附加信息回调，获取视频 URL 信息
+        debug.additionDebugInfo = { [weak player] in
+            guard let player = player else {
+                return "Video URL: Player not ready"
+            }
+            return player.currentVideoURLInfo
+        }
+        
         let playSpeed = SpeedChangerPlugin()
         playSpeed.$currentPlaySpeed.sink { [weak danmu] speed in
             danmu?.danMuView.playingSpeed = speed.value

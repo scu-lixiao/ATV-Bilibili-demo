@@ -41,16 +41,7 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
                 self.startDebug()
             }
         }
-        if let setting = current.compactMap({ $0 as? UIMenu })
-            .first(where: { $0.identifier == UIMenu.Identifier(rawValue: "setting") })
-        {
-            var child = setting.children
-            child.append(debugAction)
-            if let index = current.firstIndex(of: setting) {
-                current[index] = setting.replacingChildren(child)
-            }
-            return []
-        }
+        // 直接返回为顶级菜单项，与 Show Danmu 等按钮同级
         return [debugAction]
     }
 
@@ -84,6 +75,9 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
                 
                 // materialize 动画
                 glassBackground.materialize(duration: 0.3)
+                
+                // 确保视图在最上层
+                containerView?.bringSubviewToFront(glassBackground)
             } else {
                 // 降级方案：传统背景
                 debugView?.backgroundColor = UIColor.black.withAlphaComponent(0.8)
@@ -93,6 +87,11 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
                     make.right.equalToSuperview().offset(-12)
                     make.width.equalTo(800)
                 }
+                
+                // 确保视图在最上层
+                if let debugView = debugView {
+                    containerView?.bringSubviewToFront(debugView)
+                }
             }
             
             debugView?.textColor = UIColor.white
@@ -101,9 +100,32 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         }
         debugView?.isHidden = false
         glassBackgroundView?.isHidden = false  // 显示glass背景
+        
+        // 确保每次显示时都在最上层
+        if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+            if let glassBackgroundView = glassBackgroundView {
+                containerView?.bringSubviewToFront(glassBackgroundView)
+            }
+        } else {
+            if let debugView = debugView {
+                containerView?.bringSubviewToFront(debugView)
+            }
+        }
+        
         debugTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             let info = self?.fetchDebugInfo()
             self?.debugView?.text = info
+            
+            // 每次更新时确保视图在最上层
+            if #available(tvOS 26.0, *), ThemeManager.shared.supportsLiquidGlass {
+                if let glassBackgroundView = self?.glassBackgroundView {
+                    self?.containerView?.bringSubviewToFront(glassBackgroundView)
+                }
+            } else {
+                if let debugView = self?.debugView {
+                    self?.containerView?.bringSubviewToFront(debugView)
+                }
+            }
         }
     }
 
@@ -186,11 +208,13 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         \(audioInfo)
         """
 
-        if let additionDebugInfo = additionDebugInfo?() {
-            logs = additionDebugInfo + "\n" + logs
-        }
         if customInfo.isEmpty == false {
             logs = logs + "\n" + customInfo
+        }
+        
+        // 将视频 URL 信息放在最后显示，因为 URL 通常比较长
+        if let additionDebugInfo = additionDebugInfo?() {
+            logs = logs + "\n" + additionDebugInfo
         }
         return logs
     }
