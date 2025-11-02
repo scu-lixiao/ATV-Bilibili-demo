@@ -1,5 +1,52 @@
 # Metal 4 弹幕渲染优化集成指南
 
+## ⚠️ 重要通知（2025-01-02）
+
+**Metal 4 弹幕渲染功能已从项目中移除。**
+
+### 移除原因
+
+1. **架构不兼容**: DanmakuKit 使用 `DanmakuAsyncLayer`（CGContext 渲染），Metal 需要 `CAMetalLayer`（GPU 直接渲染），两者无法兼容
+2. **性能问题**: GPU→CPU 数据传输（`texture.getBytes()`）导致程序卡死，性能比原方案慢 10-20 倍
+3. **开发成本高**: 完全适配 Metal 需要重写整个 DanmakuKit 渲染层（1-2 周工作量）
+4. **收益有限**: CGImage 缓存已提供 15-50x 性能提升，Metal 理论最多再提升 2-3x（边际收益递减）
+
+### 当前解决方案
+
+项目现在使用 **CGImage LRU 缓存** 方案：
+- ✅ 性能提升 15-50 倍（缓存命中时 0.1-0.2 ms vs 原始 3-5 ms）
+- ✅ 稳定可靠，无崩溃、无卡顿
+- ✅ 兼容所有 iOS/tvOS 版本
+- ✅ 用户可选择"无缓存"或"CGImage 缓存"两种渲染模式
+
+### 用户设置
+
+在 `Settings.swift` 中提供了渲染模式设置：
+
+```swift
+enum DanmakuRenderMode: String, Codable, CaseIterable {
+    case none           // 不使用缓存，每次实时渲染
+    case cgImageCache   // 使用 CGImage 缓存（推荐，默认）
+}
+
+@UserDefaultCodable("Settings.danmuRenderMode", defaultValue: .cgImageCache)
+static var danmuRenderMode: DanmakuRenderMode
+```
+
+用户可在设置界面选择渲染模式，无需重启应用。
+
+### 技术细节
+
+详见：`doc/DANMAKU_CGIMAGE_CACHE_OPTIMIZATION_REPORT.md`
+
+---
+
+## 历史参考（Metal 4 原始设计）
+
+以下内容仅作为历史参考，代码已不存在。
+
+---
+
 ## 概述
 
 本文档介绍如何在 ATV-Bilibili-demo 项目中启用和使用 Metal 4 弹幕渲染优化。

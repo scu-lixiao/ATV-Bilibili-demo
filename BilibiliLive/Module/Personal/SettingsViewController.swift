@@ -283,6 +283,15 @@ class SettingsViewController: UIViewController {
                 { value in
                     Settings.danmuStrokeAlpha = value
                 }
+                
+                // 添加弹幕渲染模式设置
+                Actions(title: "弹幕渲染模式", message: Settings.danmuRenderMode.description,
+                        current: Settings.danmuRenderMode.title,
+                        options: DanmakuRenderMode.allCases,
+                        optionString: DanmakuRenderMode.allCases.map({ $0.title }))
+                { value in
+                    Settings.danmuRenderMode = value
+                }
             }
 
             SectionModel(title: "港澳台解锁") {

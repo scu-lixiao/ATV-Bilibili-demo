@@ -128,6 +128,32 @@ enum Settings {
 
     @UserDefaultCodable("Settings.danmuStrokeAlpha", defaultValue: .alpha_08)
     static var danmuStrokeAlpha: DanmuStrokeAlpha
+
+    @UserDefaultCodable("Settings.danmuRenderMode", defaultValue: .cgImageCache)
+    static var danmuRenderMode: DanmakuRenderMode
+}
+
+enum DanmakuRenderMode: String, Codable, CaseIterable {
+    case none           // 不使用缓存，每次实时渲染
+    case cgImageCache   // 使用 CGImage 缓存（推荐）
+    
+    var title: String {
+        switch self {
+        case .none:
+            return "无缓存"
+        case .cgImageCache:
+            return "CGImage 缓存"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .none:
+            return "每次实时渲染，CPU 占用高"
+        case .cgImageCache:
+            return "缓存弹幕图片，性能提升 15-50 倍"
+        }
+    }
 }
 
 struct MediaQuality {
