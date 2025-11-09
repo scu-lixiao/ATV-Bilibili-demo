@@ -91,7 +91,20 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
                 framerate = "30"
             }
         }
-        if codecs == "dvh1.08.07" || codecs == "dvh1.08.03" {
+        // Handle Bilibili Dolby Vision: HEVC Main 10 Profile with HLG
+        // Bilibili returns hvc1.2.4.L15x.90 format, need to convert to full standard format
+        if isDolby && codecs.hasPrefix("hvc1.2.4") {
+            // Convert to Apple standard: hvc1.Profile.Compatibility.Level.Constraints
+            // hvc1.2.4.L150.90 -> hvc1.2.40000000.L150.B0
+            let levelMatch = codecs.range(of: "L15[0-9]", options: .regularExpression)
+            if let range = levelMatch {
+                let level = String(codecs[range])
+                // Full format: hvc1.2(Main10).40000000(compatibility).Level.B0(constraints)
+                codecs = "hvc1.2.40000000.\(level).B0"
+                supplementCodesc = "dvh1.08.07/db4h"
+                videoRange = "HLG"
+            }
+        } else if codecs == "dvh1.08.07" || codecs == "dvh1.08.03" {
             supplementCodesc = codecs + "/db4h"
             codecs = "hvc1.2.4.L153.b0"
             videoRange = "HLG"
