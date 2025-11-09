@@ -195,15 +195,15 @@ class BLButton: UIControl {
 
     func setup() {
         
+        // Use Liquid Glass for tvOS 26+ with proper version check
         if #available(tvOS 26.0, *) {
-            
             let glassEffect = UIGlassEffect(style: .clear)
             effectView.effect = glassEffect
         } else {
-            effectView.effect = UIBlurEffect(style: .extraDark)
+            // Enhanced blur for tvOS 18-25 and below
+            effectView.effect = UIBlurEffect(style: .dark)
         }
         
-
         isUserInteractionEnabled = true
         motionEffect = UIInterpolatingMotionEffect(keyPath: "center.x", type: .tiltAlongHorizontalAxis)
         motionEffect.maximumRelativeValue = 2
@@ -245,22 +245,31 @@ class BLButton: UIControl {
         super.didUpdateFocus(in: context, with: coordinator)
         if isFocused {
             selectedWhiteView.isHidden = false
-            let scale = 1.04
+            // Enhanced scale for better visibility (was 1.04, now 1.06)
+            let scale: CGFloat = 1.06
             coordinator.addCoordinatedAnimations {
                 self.transform = CGAffineTransformMakeScale(scale, scale)
                 let scaleDiff = (self.bounds.size.height * scale - self.bounds.size.height) / 2
                 self.transform = CGAffineTransformTranslate(self.transform, 0, -scaleDiff)
-                self.layer.shadowOffset = CGSizeMake(0, 10)
-                self.layer.shadowOpacity = 0.15
-                self.layer.shadowRadius = 16.0
+                
+                // Premium shadow with enhanced depth
+                self.layer.shadowOffset = CGSizeMake(0, 12)
+                self.layer.shadowOpacity = 0.3
+                self.layer.shadowRadius = 24.0
+                self.layer.shadowColor = UIColor.deepShadow.cgColor
+                
                 self.addMotionEffect(self.motionEffect)
             }
         } else {
             selectedWhiteView.isHidden = true
             coordinator.addCoordinatedAnimations {
                 self.transform = CGAffineTransformIdentity
-                self.layer.shadowOpacity = 0
-                self.layer.shadowOffset = CGSizeMake(0, 0)
+                
+                // Subtle shadow in unfocused state
+                self.layer.shadowOpacity = 0.15
+                self.layer.shadowOffset = CGSizeMake(0, 4)
+                self.layer.shadowRadius = 8.0
+                
                 self.removeMotionEffect(self.motionEffect)
             }
         }

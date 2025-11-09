@@ -21,6 +21,10 @@ class VideoDetailViewController: UIViewController {
     private let infoEffectViewCornerRadius: CGFloat = 54
     private var isCoveImageToToped: Bool = false
     private var loadingView = UIActivityIndicatorView()
+    
+    // Premium ambient lighting
+    private let ambientLightingView = AmbientLightingView()
+    
     @IBOutlet var backgroundImageView: UIImageView!
     @IBOutlet var effectContainerView: UIVisualEffectView!
 
@@ -140,8 +144,12 @@ class VideoDetailViewController: UIViewController {
         didSet {
             infoVisualEffectView.layer.cornerRadius = infoEffectViewCornerRadius
             if #available(tvOS 26.0, *) {
+                // Use premium Liquid Glass with subtle tint
                 infoVisualEffectView.effect = UIGlassEffect(style: .clear)
-               
+                infoVisualEffectView.contentView.backgroundColor = UIColor.glassNeutralTint
+            } else {
+                // Fallback blur for tvOS 18-25 and below
+                infoVisualEffectView.effect = UIBlurEffect(style: .dark)
             }
         }
     }
@@ -182,6 +190,14 @@ class VideoDetailViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        // Setup ambient lighting layer
+        view.insertSubview(ambientLightingView, at: 0)
+        ambientLightingView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+        ambientLightingView.lightingIntensity = 0.25
+        
         Task { await fetchData() }
 
         pageCollectionView.register(BLTextOnlyCollectionViewCell.self, forCellWithReuseIdentifier: String(describing: BLTextOnlyCollectionViewCell.self))
@@ -252,14 +268,47 @@ class VideoDetailViewController: UIViewController {
 //            },
 //        ])
         
-        UIView.animate(springDuration: 0.6, bounce: 0.3) {
-           
+        // Enhanced spring animation with staggered timing for premium feel
+        UIView.animate(
+            withDuration: SpringParams.standard.duration,
+            delay: 0,
+            usingSpringWithDamping: SpringParams.standard.damping,
+            initialSpringVelocity: SpringParams.standard.velocity,
+            options: [.curveEaseOut]
+        ) {
             self.likeButton.alpha = 1
             self.likeButton.transform = .identity
+        }
+        
+        UIView.animate(
+            withDuration: SpringParams.standard.duration,
+            delay: 0.05,
+            usingSpringWithDamping: SpringParams.standard.damping,
+            initialSpringVelocity: SpringParams.standard.velocity,
+            options: [.curveEaseOut]
+        ) {
             self.coinButton.alpha = 1
             self.coinButton.transform = .identity
+        }
+        
+        UIView.animate(
+            withDuration: SpringParams.standard.duration,
+            delay: 0.1,
+            usingSpringWithDamping: SpringParams.standard.damping,
+            initialSpringVelocity: SpringParams.standard.velocity,
+            options: [.curveEaseOut]
+        ) {
             self.favButton.alpha = 1
             self.favButton.transform = .identity
+        }
+        
+        UIView.animate(
+            withDuration: SpringParams.standard.duration,
+            delay: 0.15,
+            usingSpringWithDamping: SpringParams.standard.damping,
+            initialSpringVelocity: SpringParams.standard.velocity,
+            options: [.curveEaseOut]
+        ) {
             self.dislikeButton.alpha = 1
             self.dislikeButton.transform = .identity
         }
@@ -435,7 +484,16 @@ class VideoDetailViewController: UIViewController {
 
         avatarImageView.kf.setImage(with: data.avatar, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))), .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))), .cacheSerializer(FormatIndicatedCacheSerializer.png)])
 
-        coverImageView.kf.setImage(with: data.pic)
+        coverImageView.kf.setImage(with: data.pic) { [weak self] result in
+            guard let self = self else { return }
+            if case .success(let imageResult) = result {
+                // Update ambient lighting based on cover image
+                self.ambientLightingView.updateLighting(from: imageResult.image, animated: true)
+                
+                // Apply smart glow to cover
+                self.coverImageView.applySmartGlow(from: imageResult.image, config: .medium)
+            }
+        }
         backgroundImageView.kf.setImage(with: data.pic)
         recommandCollectionView.superview?.isHidden = data.Related.count == 0
 
@@ -523,6 +581,13 @@ class VideoDetailViewController: UIViewController {
                 likeButton.title? -= 1
             } else {
                 likeButton.title? += 1
+                
+                // Emit like particles
+                let buttonCenter = likeButton.convert(CGPoint(x: likeButton.bounds.midX, y: likeButton.bounds.midY), to: view)
+                view.emitParticles(type: .like, at: buttonCenter, duration: 0.6)
+                
+                // Success pulse animation
+                PremiumAnimations.successPulse(view: likeButton, color: UIColor(red: 1.0, green: 0.4, blue: 0.7, alpha: 1.0))
             }
             likeButton.isOn.toggle()
             let success = await WebRequest.requestLike(aid: aid, like: likeButton.isOn)
@@ -548,6 +613,11 @@ class VideoDetailViewController: UIViewController {
             }
             self.didSentCoins += 1
             WebRequest.requestCoin(aid: aid, num: 1)
+            
+            // Emit coin particles
+            let buttonCenter = self.coinButton.convert(CGPoint(x: self.coinButton.bounds.midX, y: self.coinButton.bounds.midY), to: self.view)
+            self.view.emitParticles(type: .coin, at: buttonCenter, duration: 0.8)
+            PremiumAnimations.successPulse(view: self.coinButton, color: .systemYellow)
         })
         if didSentCoins == 0 {
             alert.addAction(UIAlertAction(title: "2", style: .default) { [weak self] _ in
@@ -560,6 +630,11 @@ class VideoDetailViewController: UIViewController {
                 self.likeButton.isOn = true
                 self.didSentCoins += 2
                 WebRequest.requestCoin(aid: aid, num: 2)
+                
+                // Emit more coin particles for 2 coins
+                let buttonCenter = self.coinButton.convert(CGPoint(x: self.coinButton.bounds.midX, y: self.coinButton.bounds.midY), to: self.view)
+                self.view.emitParticles(type: .coin, at: buttonCenter, duration: 1.0)
+                PremiumAnimations.successPulse(view: self.coinButton, color: .systemYellow)
             })
         }
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -584,6 +659,13 @@ class VideoDetailViewController: UIViewController {
                     self?.favButton.title? += 1
                     self?.favButton.isOn = true
                     WebRequest.requestFavorite(aid: aid, mid: fav.id)
+                    
+                    // Emit favorite particles
+                    if let self = self {
+                        let buttonCenter = self.favButton.convert(CGPoint(x: self.favButton.bounds.midX, y: self.favButton.bounds.midY), to: self.view)
+                        self.view.emitParticles(type: .favorite, at: buttonCenter, duration: 0.7)
+                        PremiumAnimations.successPulse(view: self.favButton, color: .systemYellow)
+                    }
                 })
             }
             alert.addAction(UIAlertAction(title: "取消", style: .cancel))

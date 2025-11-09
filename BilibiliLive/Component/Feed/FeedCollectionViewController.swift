@@ -226,6 +226,27 @@ class FeedCollectionViewController: UIViewController {
         NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_TOP, object: nil, queue: .main) { [weak self] _ in
             self?.handleMenuPress()
         }
+        
+        // 🚀 Performance: Start DisplayLink coordinator and apply degradation
+        // This ensures smooth 60fps animations with automatic quality adjustment
+        PerformanceDegradation.shared.applyDegradation()
+        
+        #if DEBUG
+        // Monitor performance in debug builds
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            PerformanceMonitor.shared.printStats()
+            ParticlePool.shared.printStats()
+        }
+        #endif
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        
+        // 🚀 Performance: Clean up when view disappears
+        DisplayLinkCoordinator.shared.clear()
+        ParticlePool.shared.clear()
+        CALayer.clearAllScheduled()
     }
 
     func handleMenuPress() {
@@ -363,6 +384,14 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
         collectionView.visibleCells.compactMap { $0 as? BLMotionCollectionViewCell }.forEach { cell in
             cell.updateTransform()
         }
+    }
+    
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Update parallax layers for background elements
+        bgImageView.applyDepthParallax(depth: 0.0, scrollOffset: scrollView.contentOffset.y, maxParallax: 80)
+        
+        // Update cell parallax if enabled
+        collectionView.updateCellParallax()
     }
 
     func collectionView(_ collectionView: UICollectionView, didUpdateFocusIn context: UICollectionViewFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {

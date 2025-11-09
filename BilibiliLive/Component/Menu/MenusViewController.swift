@@ -32,10 +32,17 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     @IBOutlet var menusView: UIView! {
         didSet {
             if #available(tvOS 26.0, *) {
+                // Use premium Liquid Glass with brand tint
+                menusView.applyLiquidGlass(
+                    style: .clear,
+                    tintColor: UIColor.glassPinkTint,
+                    cornerRadius: lessBigSornerRadius,
+                    interactive: false
+                )
+            } else if #available(tvOS 18.0, *) {
                 menusView.setGlassEffectView(style: .clear,
                                              cornerRadius: lessBigSornerRadius,
                                              tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
-
             } else {
                 menusView.setBlurEffectView(cornerRadius: lessBigSornerRadius)
                 menusView.setCornerRadius(cornerRadius: lessBigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
@@ -86,7 +93,11 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         }
         menusLeft.constant = 40
 
-        view.backgroundColor = UIColor(named: "mainBgColor")
+        // Use premium deep dark background
+        view.backgroundColor = UIColor.deepDarkBG
+        
+        // Add ambient gradient for depth
+        view.applyDarkGradient()
 
         NotificationCenter.default.removeObserver(self)
         NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_SHOW_MENU, object: nil, queue: .main) { [weak self] _ in
@@ -130,14 +141,12 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
             self.view.setNeedsFocusUpdate()
             self.view.updateFocusIfNeeded()
 
-            // 先轻微预备动画（让 UI 有呼吸感）
-            UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut]) {
-                self.menusView.transform = CGAffineTransform(scaleX: 0.97, y: 0.97)
+                        // Enhanced anticipation animation with smoother springs
+            UIView.animate(withDuration: AnimationDuration.fast.rawValue, delay: 0, options: [.curveEaseOut]) {
+                self.menusView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
             } completion: { _ in
-                UIView.animate(withDuration: 0.45,
-                          delay: 0,
-                          usingSpringWithDamping: 0.8,
-                          initialSpringVelocity: 0.5) {
+                // Use premium spring parameters for smooth expansion
+                self.menusView.animateSpring(.standard) {
                     if let recognizer = self.menuRecognizer {
                         self.view.removeGestureRecognizer(recognizer)
                     }
@@ -154,14 +163,13 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
                     self.menuViewWidth.constant = 320
                     self.menusView.setCornerRadius(cornerRadius: bigSornerRadius)
 
-                    // 阴影更柔和
-                    self.menusView.layer.shadowOpacity = 0.3
-                    self.menusView.layer.shadowRadius = 18
+                    // Premium shadow with enhanced depth
+                    self.menusView.applyPremiumShadow(elevation: .level3, glowColor: .pinkGlowShadow)
                     self.menusView.transform = .identity
 
                     // label 动画
                     UIView.transition(with: self.usernameLabel,
-                                      duration: 0.3,
+                                      duration: AnimationDuration.standard.rawValue,
                                       options: [.transitionCrossDissolve]) {
                         self.usernameLabel.text = self.userName
                     }
@@ -169,8 +177,8 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
                     self.usernameLabel.alpha = 0.6
                     self.view.layoutIfNeeded()
                 } completion: { _ in
-                    // 平滑过渡
-                    BLAnimate(withDuration: 0.3) {
+                    // Smooth follow-through
+                    UIView.animate(withDuration: AnimationDuration.standard.rawValue) {
                         self.usernameLabel.transform = .identity
                         self.usernameLabel.alpha = 1
                     }
@@ -181,10 +189,8 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     }
     
     func hiddenMenus(isHiddenSubView: Bool = false) {
-        UIView.animate(withDuration: 0.4,
-                  delay: 0,
-                  usingSpringWithDamping: 0.85,
-                  initialSpringVelocity: 0.5) {
+        // Use refined spring parameters for collapse animation
+        menusView.animateSpring(.subtle) {
             self.leftCollectionView.alpha = 0
             self.homeIcon.alpha = isHiddenSubView ? 0 : 1
 
@@ -196,13 +202,12 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
             self.menuViewWidth.constant = 180
             self.menusView.setCornerRadius(cornerRadius: 30)
 
-            // 模糊阴影逐渐减弱
-            self.menusView.layer.shadowOpacity = 0.1
-            self.menusView.layer.shadowRadius = 6
+            // Reduced shadow in collapsed state
+            self.menusView.applyPremiumShadow(elevation: .level1)
 
             // usernameLabel 动画
             UIView.transition(with: self.usernameLabel,
-                              duration: 0.3,
+                              duration: AnimationDuration.standard.rawValue,
                               options: [.transitionCrossDissolve]) {
                 self.usernameLabel.text = self.selectMenuItem?.title
             }
@@ -211,7 +216,7 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
 
             self.view.layoutIfNeeded()
         } completion: { _ in
-            UIView.animate(withDuration: 0.25) {
+            UIView.animate(withDuration: AnimationDuration.fast.rawValue) {
                 self.usernameLabel.transform = .identity
                 self.usernameLabel.alpha = 1
             }

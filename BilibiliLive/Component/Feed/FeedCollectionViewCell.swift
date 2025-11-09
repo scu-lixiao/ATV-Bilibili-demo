@@ -32,6 +32,9 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         let longpress = UILongPressGestureRecognizer(target: self, action: #selector(actionLongPress(sender:)))
         addGestureRecognizer(longpress)
 
+        // Tag for parallax effect
+        contentView.tag = 999
+        
         contentView.addSubview(imageView)
         imageView.snp.makeConstraints { make in
             make.leading.equalToSuperview()
@@ -143,7 +146,13 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
             if pic.scheme == nil {
                 pic = URL(string: "http:\(pic.absoluteString)")!
             }
-            imageView.kf.setImage(with: pic, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 720, height: 404))), .cacheOriginalImage])
+            imageView.kf.setImage(with: pic, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 720, height: 404))), .cacheOriginalImage]) { [weak self] result in
+                guard let self = self else { return }
+                // Apply smart glow based on image content after loading
+                if case .success(let imageResult) = result {
+                    self.imageView.applySmartGlow(from: imageResult.image, config: .subtle)
+                }
+            }
         }
         if let avatar = data.avatar {
             avatarView.isHidden = false
@@ -176,6 +185,33 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         avatarView.kf.cancelDownloadTask()
         onLongPress = nil
         avatarView.image = nil
+        
+        // Remove glow effects
+        imageView.removeGlow()
+    }
+    
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        
+        coordinator.addCoordinatedAnimations {
+            if self.isFocused {
+                // Enhanced focus glow with smart color adaptation
+                self.imageView.applySmartFocusGlow(from: self.imageView.image, isFocused: true)
+                
+                // 🚀 Performance: Disable rasterization when focused (dynamic content)
+                self.imageView.layer.disableRasterization()
+            } else {
+                // Fade out glow
+                self.imageView.animateGlowIntensity(to: 0.3, duration: 0.3)
+                
+                // 🚀 Performance: Enable rasterization when unfocused (static content)
+                self.imageView.isStatic(timeout: 0.5) { [weak self] isStatic in
+                    if isStatic {
+                        self?.imageView.layer.enableSmartRasterization()
+                    }
+                }
+            }
+        }
     }
 }
 
