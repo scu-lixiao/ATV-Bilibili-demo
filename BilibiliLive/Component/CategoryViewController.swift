@@ -58,13 +58,32 @@ class CategoryViewController: UIViewController, BLTabBarContentVCProtocol {
         collectionView(typeCollectionView, didSelectItemAt: IndexPath(item: 0, section: 0))
 
         let backgroundView = UIView()
-        backgroundView.setAutoGlassEffectView(cornerRadius: bigSornerRadius)
+        // Apply Premium visual effects matching MenusViewController
+        if #available(tvOS 26.0, *) {
+            backgroundView.applyLiquidGlass(
+                style: .clear,
+                tintColor: UIColor.glassPinkTint,
+                cornerRadius: bigSornerRadius,
+                interactive: false
+            )
+        } else if #available(tvOS 18.0, *) {
+            backgroundView.setGlassEffectView(style: .clear,
+                                             cornerRadius: bigSornerRadius,
+                                             tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
+        } else {
+            backgroundView.setBlurEffectView(cornerRadius: bigSornerRadius)
+            backgroundView.setCornerRadius(cornerRadius: bigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
+        }
+        
         view.insertSubview(backgroundView, at: 1)
         backgroundView.snp.makeConstraints { make in
             make.left.right.equalTo(typeCollectionView)
             make.top.equalTo(typeCollectionView).offset(-20)
             make.bottom.equalTo(typeCollectionView).offset(20)
         }
+        
+        // Add Premium shadow for enhanced depth
+        backgroundView.applyPremiumShadow(elevation: .level2)
     }
 
     func setViewController(vc: UIViewController) {

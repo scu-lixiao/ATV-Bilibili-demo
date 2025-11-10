@@ -57,21 +57,18 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         imageView.adjustsImageWhenAncestorFocused = true
         let style = styleOverride ?? Settings.displayStyle
 
-//        switch style.feedColCount {
-//        case 3:
-//            imageView.layer.cornerRadius = lessBigSornerRadius
-//        case 4:
-//            imageView.layer.cornerRadius = lessBigSornerRadius
-//        case 5:
-//            imageView.layer.cornerRadius = normailSornerRadius
-//        default:
-//            imageView.layer.cornerRadius = lessBigSornerRadius
-//        }
-//        imageView.layer.cornerCurve = .continuous
-//        imageView.layer.masksToBounds = true
-//        imageView.layer.shouldRasterize = true
-//        imageView.layer.rasterizationScale = UIScreen.main.scale
-//        imageView.contentMode = .scaleAspectFill
+        // Apply corner radius based on display style to ensure consistency across simulator and device
+        switch style {
+        case .big, .large:
+            imageView.layer.cornerRadius = lessBigSornerRadius
+        case .normal, .sideBar:
+            imageView.layer.cornerRadius = normailSornerRadius
+        }
+        imageView.layer.cornerCurve = .continuous
+        imageView.layer.masksToBounds = true
+        imageView.layer.shouldRasterize = true
+        imageView.layer.rasterizationScale = UIScreen.main.scale
+        imageView.contentMode = .scaleAspectFill
 
         imageView.addSubview(avatarView)
 
