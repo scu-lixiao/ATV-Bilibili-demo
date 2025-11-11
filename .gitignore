@@ -9,6 +9,23 @@
 
 ## User settings
 xcuserdata/
+# IDE and Editor Settings
+.vscode/
+.idea/
+.claude/
+.bundle/
+doc/
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# GitHub Configuration
+.github/
+
+# MCP Configuration
+.mcp.json
 
 ## compatibility with Xcode 8 and earlier (ignoring not required starting Xcode 9)
 *.xcscmblueprint

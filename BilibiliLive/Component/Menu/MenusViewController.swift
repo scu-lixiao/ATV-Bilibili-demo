@@ -26,19 +26,25 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     @IBOutlet var leftCollectionView: BSCollectionVIew!
     weak var currentViewController: UIViewController?
     private var menuIsShowing = false
-    private var menuRecognizer: UITapGestureRecognizer?
     private var selectMenuItem: CellModel?
+    
+    // 防止 Menu 按键重复触发
+    private var isProcessingMenuPress = false
 
     @IBOutlet var menusView: UIView! {
         didSet {
             if #available(tvOS 26.0, *) {
-                // Use premium Liquid Glass with brand tint
+                // Use enhanced multi-layer glass with dark theme optimization
                 menusView.applyLiquidGlass(
                     style: .clear,
-                    tintColor: UIColor.glassPinkTint,
+                    tintColor: UIColor.glassPinkTintDark,
                     cornerRadius: lessBigSornerRadius,
                     interactive: false
                 )
+                
+                // Add subtle stroke for definition
+                menusView.layer.borderWidth = 1.0
+                menusView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
             } else if #available(tvOS 18.0, *) {
                 menusView.setGlassEffectView(style: .clear,
                                              cornerRadius: lessBigSornerRadius,
@@ -96,17 +102,23 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         // Use premium deep dark background
         view.backgroundColor = UIColor.deepDarkBG
         
-        // Add ambient gradient for depth
+        // Add ambient gradient for depth with enhanced glow
         view.applyDarkGradient()
+        
+        // Add subtle radial glow behind menu for depth perception
+        addAmbientGlowToMenu()
 
         NotificationCenter.default.removeObserver(self)
         NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_SHOW_MENU, object: nil, queue: .main) { [weak self] _ in
             self?.showMenus()
         }
+        
+        // Add memory warning observer for performance optimization
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.handleMemoryWarning()
+        }
 
-        menuRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleMenuPress))
-        menuRecognizer?.allowedPressTypes = [NSNumber(value: UIPress.PressType.menu.rawValue)]
-        view.addGestureRecognizer(menuRecognizer!)
+        // 移除旧的 gesture recognizer 方式，改用 pressesEnded 方法处理 Menu 按键
         BLAfter(afterTime: 2) {
             self.view.addSubview(self.menusView)
             self.hiddenMenus(isHiddenSubView: true)
@@ -147,10 +159,6 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
             } completion: { _ in
                 // Use premium spring parameters for smooth expansion
                 self.menusView.animateSpring(.standard) {
-                    if let recognizer = self.menuRecognizer {
-                        self.view.removeGestureRecognizer(recognizer)
-                    }
-
                     // 渐变显示子元素
                     self.leftCollectionView.alpha = 1
                     self.homeIcon.alpha = 0
@@ -166,6 +174,9 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
                     // Premium shadow with enhanced depth
                     self.menusView.applyPremiumShadow(elevation: .level3, glowColor: .pinkGlowShadow)
                     self.menusView.transform = .identity
+                    
+                    // Update ambient glow for expanded state
+                    self.updateAmbientGlow(isExpanded: true)
 
                     // label 动画
                     UIView.transition(with: self.usernameLabel,
@@ -204,6 +215,9 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
 
             // Reduced shadow in collapsed state
             self.menusView.applyPremiumShadow(elevation: .level1)
+            
+            // Update ambient glow for collapsed state
+            self.updateAmbientGlow(isExpanded: false)
 
             // usernameLabel 动画
             UIView.transition(with: self.usernameLabel,
@@ -221,10 +235,6 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
                 self.usernameLabel.alpha = 1
             }
             self.menuIsShowing = false
-
-            if let recognizer = self.menuRecognizer {
-                self.view.addGestureRecognizer(recognizer)
-            }
         }
     }
 
@@ -312,12 +322,122 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        super.pressesEnded(presses, with: event)
-        guard let buttonPress = presses.first?.type else { return }
-        if buttonPress == .playPause {
-            if let reloadVC = topMostViewController() as? BLTabBarContentVCProtocol {
-                print("send reload to \(reloadVC)")
-                reloadVC.reloadData()
+        var didHandlePress = false
+        
+        for press in presses {
+            switch press.type {
+            case .menu:
+                // 处理 Menu 按键
+                // 防止重复触发
+                guard !isProcessingMenuPress else {
+                    Logger.debug("Menu press ignored - already processing")
+                    return
+                }
+                
+                isProcessingMenuPress = true
+                handleMenuPress()
+                didHandlePress = true
+                
+                // 延迟重置标志，防止快速重复触发
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.isProcessingMenuPress = false
+                }
+                
+            case .playPause:
+                // 处理 Play/Pause 按键（保持原有功能）
+                if let reloadVC = topMostViewController() as? BLTabBarContentVCProtocol {
+                    Logger.debug("PlayPause pressed - reloading: \(reloadVC)")
+                    reloadVC.reloadData()
+                    didHandlePress = true
+                }
+                
+            default:
+                break
+            }
+        }
+        
+        // 如果没有处理任何按键，传递给 super
+        if !didHandlePress {
+            super.pressesEnded(presses, with: event)
+        }
+    }
+    
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        // 重置处理标志，防止状态异常
+        for press in presses {
+            if press.type == .menu {
+                isProcessingMenuPress = false
+                Logger.debug("Menu press cancelled - reset processing flag")
+            }
+        }
+        super.pressesCancelled(presses, with: event)
+    }
+    
+    // MARK: - Enhanced Visual Effects
+    
+    /// Adds ambient glow effect behind menu for enhanced depth perception
+    private func addAmbientGlowToMenu() {
+        // Create a subtle radial gradient glow
+        let glowLayer = CAGradientLayer()
+        glowLayer.type = .radial
+        glowLayer.colors = [
+            UIColor.luminousPink.withAlphaComponent(0.08).cgColor,
+            UIColor.luminousPink.withAlphaComponent(0.04).cgColor,
+            UIColor.clear.cgColor
+        ]
+        glowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glowLayer.endPoint = CGPoint(x: 1.5, y: 1.5)
+        glowLayer.frame = CGRect(x: -100, y: -100, width: 600, height: 1200)
+        glowLayer.opacity = 0.0
+        
+        // Insert behind menu view
+        view.layer.insertSublayer(glowLayer, at: 0)
+        
+        // Store reference for animation
+        glowLayer.name = "ambient-glow"
+        
+        // Initial fade in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(1.0)
+            glowLayer.opacity = 1.0
+            CATransaction.commit()
+        }
+    }
+    
+    /// Updates ambient glow intensity based on menu state
+    private func updateAmbientGlow(isExpanded: Bool) {
+        guard let glowLayer = view.layer.sublayers?.first(where: { $0.name == "ambient-glow" }) as? CAGradientLayer else {
+            return
+        }
+        
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(AnimationDuration.smooth.rawValue)
+        glowLayer.opacity = isExpanded ? 1.0 : 0.5
+        CATransaction.commit()
+    }
+    
+    /// Handles memory warning by reducing visual effects temporarily
+    private func handleMemoryWarning() {
+        Logger.info("Memory warning received - optimizing visual effects")
+        
+        // Temporarily reduce ambient glow opacity
+        if let glowLayer = view.layer.sublayers?.first(where: { $0.name == "ambient-glow" }) as? CAGradientLayer {
+            glowLayer.opacity = 0.3
+        }
+        
+        // Disable shadow rasterization temporarily
+        menusView.layer.shouldRasterize = false
+        
+        // Re-enable after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self = self else { return }
+            if let glowLayer = self.view.layer.sublayers?.first(where: { $0.name == "ambient-glow" }) as? CAGradientLayer {
+                glowLayer.opacity = self.menuIsShowing ? 1.0 : 0.5
+            }
+            self.menusView.layer.shouldRasterize = true
+            if let window = self.view.window {
+                self.menusView.layer.rasterizationScale = window.screen.scale
             }
         }
     }

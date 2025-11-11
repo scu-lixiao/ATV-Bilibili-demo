@@ -51,14 +51,17 @@ class PersonalViewController: UIViewController, BLTabBarContentVCProtocol {
         leftCollectionView.selectItem(at: IndexPath(row: 0, section: 0), animated: false, scrollPosition: .top)
         collectionView(leftCollectionView, didSelectItemAt: IndexPath(row: 0, section: 0))
         
-        // Apply Premium visual effects to menusView matching MenusViewController
+        // Apply Premium visual effects with dark theme enhancement
         if #available(tvOS 26.0, *) {
             menusView.applyLiquidGlass(
                 style: .clear,
-                tintColor: UIColor.glassPinkTint,
+                tintColor: UIColor.glassPinkTintDark,
                 cornerRadius: bigSornerRadius,
                 interactive: false
             )
+            
+            // Add glass stroke for definition
+            menusView.applyGlassStroke(width: 1.0)
         } else if #available(tvOS 18.0, *) {
             menusView.setGlassEffectView(style: .clear,
                                          cornerRadius: bigSornerRadius,
@@ -68,8 +71,8 @@ class PersonalViewController: UIViewController, BLTabBarContentVCProtocol {
             menusView.setCornerRadius(cornerRadius: bigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
         }
         
-        // Add Premium shadow for enhanced depth
-        menusView.applyPremiumShadow(elevation: .level2)
+        // Add Premium shadow with enhanced depth
+        menusView.applyPremiumShadow(elevation: .level2, glowColor: .pinkGlowShadow)
         
         WebRequest.requestLoginInfo { [weak self] response in
             switch response {

@@ -68,6 +68,33 @@ extension UIColor {
         UIColor.white.withAlphaComponent(0.08)
     }
     
+    // MARK: - Dark Theme Enhanced Glass Tints
+    
+    /// Enhanced pink glass for dark backgrounds (increased visibility)
+    static var glassPinkTintDark: UIColor {
+        luminousPink.withAlphaComponent(0.25)
+    }
+    
+    /// Enhanced blue glass for dark backgrounds
+    static var glassBlueTintDark: UIColor {
+        luminousBlue.withAlphaComponent(0.22)
+    }
+    
+    /// Enhanced neutral glass with slight warm tint
+    static var glassNeutralTintDark: UIColor {
+        UIColor(white: 0.15, alpha: 0.18)
+    }
+    
+    /// Subtle glass stroke for definition in dark theme
+    static var glassStrokeBorder: UIColor {
+        UIColor.white.withAlphaComponent(0.12)
+    }
+    
+    /// Inner glow for focused glass elements
+    static var glassInnerGlow: UIColor {
+        UIColor.white.withAlphaComponent(0.35)
+    }
+    
     // MARK: - Text Colors with Enhanced Contrast
     
     /// Primary text for dark theme

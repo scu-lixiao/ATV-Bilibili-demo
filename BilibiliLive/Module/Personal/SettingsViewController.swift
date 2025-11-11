@@ -387,6 +387,7 @@ class SettingsSwitchCell: BLMotionCollectionViewCell {
 
 class SettingsHeaderView: UICollectionReusableView {
     let label = UILabel()
+    let glassBackgroundView = UIView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -399,11 +400,29 @@ class SettingsHeaderView: UICollectionReusableView {
     }
 
     func setup() {
+        // Add glass background similar to TitleSupplementaryView
+        addSubview(glassBackgroundView)
+        glassBackgroundView.snp.makeConstraints { make in
+            make.edges.equalToSuperview().inset(UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 10))
+        }
+        
+        // Apply subtle glass effect for settings section headers
+        if #available(tvOS 26.0, *) {
+            glassBackgroundView.applyGlassNavigationStyle(
+                preset: .subNavigation,
+                isFocused: false
+            )
+        } else {
+            // Fallback
+            glassBackgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.25)
+            glassBackgroundView.layer.cornerRadius = CornerRadiusToken.small.rawValue
+        }
+        
         addSubview(label)
         label.font = .preferredFont(forTextStyle: .footnote)
         label.textColor = UIColor.secondaryLabel
         label.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(20)
+            make.leading.equalToSuperview().offset(30)
             make.top.equalToSuperview().offset(20)
             make.bottom.equalToSuperview().offset(-20)
         }

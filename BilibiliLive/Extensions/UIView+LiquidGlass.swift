@@ -94,7 +94,12 @@ extension UIView {
         
         // Optimize shadow rendering
         layer.shouldRasterize = true
-        layer.rasterizationScale = UIScreen.main.scale
+        // Use window's screen if available, otherwise use trait collection scale
+        if let window = self.window {
+            layer.rasterizationScale = window.screen.scale
+        } else {
+            layer.rasterizationScale = self.traitCollection.displayScale
+        }
     }
     
     /// Removes all shadow effects
@@ -184,6 +189,32 @@ extension UIView {
         )
         applyPremiumShadow(elevation: elevation)
         setCornerRadius(cornerRadius)
+    }
+    
+    /// Adds a subtle glass stroke/border for definition
+    @MainActor
+    func applyGlassStroke(
+        width: CGFloat = 1.0,
+        color: UIColor? = nil
+    ) {
+        layer.borderWidth = width
+        layer.borderColor = (color ?? UIColor.glassStrokeBorder).cgColor
+    }
+    
+    /// Removes glass stroke
+    func removeGlassStroke() {
+        layer.borderWidth = 0
+        layer.borderColor = nil
+    }
+    
+    /// Animates glass intensity change (useful for hover/focus states)
+    func animateGlassIntensity(
+        to intensity: CGFloat,
+        duration: TimeInterval = AnimationDuration.fast.rawValue
+    ) {
+        UIView.animate(withDuration: duration) {
+            self.alpha = intensity
+        }
     }
 }
 

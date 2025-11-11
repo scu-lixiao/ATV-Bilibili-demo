@@ -63,7 +63,7 @@ class FeedCollectionViewController: UIViewController {
     var loadMore: (() -> Void)?
     var finished = false
     var pageSize = 20
-    var showHeader: Bool = true
+    var showHeader: Bool = false  // 隐藏所有栏目的标题栏
     var headerText = ""
     var coverViewHeight = 500.0
     let collectionEdgeInsetTop = 40.0
