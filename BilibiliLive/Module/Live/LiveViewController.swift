@@ -12,18 +12,18 @@ import UIKit
 class LiveViewController: CategoryViewController {
     override func viewDidLoad() {
         categories = [
-//            CategoryDisplayModel(title: "推荐", contentVC: AreaLiveViewController(areaID: -1)),
+            CategoryDisplayModel(title: "推荐", contentVC: AreaLiveViewController(areaID: -1)),
             CategoryDisplayModel(title: "关注", contentVC: MyLiveViewController()),
-//            CategoryDisplayModel(title: "人气", contentVC: AreaLiveViewController(areaID: 0)),
-//            CategoryDisplayModel(title: "娱乐", contentVC: AreaLiveViewController(areaID: 1)),
-//            CategoryDisplayModel(title: "虚拟主播", contentVC: AreaLiveViewController(areaID: 9)),
-//            CategoryDisplayModel(title: "网游", contentVC: AreaLiveViewController(areaID: 2)),
-//            CategoryDisplayModel(title: "手游", contentVC: AreaLiveViewController(areaID: 3)),
-//            CategoryDisplayModel(title: "单机", contentVC: AreaLiveViewController(areaID: 6)),
-//            CategoryDisplayModel(title: "生活", contentVC: AreaLiveViewController(areaID: 10)),
-//            CategoryDisplayModel(title: "电台", contentVC: AreaLiveViewController(areaID: 5)),
-//            CategoryDisplayModel(title: "知识", contentVC: AreaLiveViewController(areaID: 11)),
-//            CategoryDisplayModel(title: "赛事", contentVC: AreaLiveViewController(areaID: 13)),
+            CategoryDisplayModel(title: "人气", contentVC: AreaLiveViewController(areaID: 0)),
+            CategoryDisplayModel(title: "娱乐", contentVC: AreaLiveViewController(areaID: 1)),
+            CategoryDisplayModel(title: "虚拟主播", contentVC: AreaLiveViewController(areaID: 9)),
+            CategoryDisplayModel(title: "网游", contentVC: AreaLiveViewController(areaID: 2)),
+            CategoryDisplayModel(title: "手游", contentVC: AreaLiveViewController(areaID: 3)),
+            CategoryDisplayModel(title: "单机", contentVC: AreaLiveViewController(areaID: 6)),
+            CategoryDisplayModel(title: "生活", contentVC: AreaLiveViewController(areaID: 10)),
+            CategoryDisplayModel(title: "电台", contentVC: AreaLiveViewController(areaID: 5)),
+            CategoryDisplayModel(title: "知识", contentVC: AreaLiveViewController(areaID: 11)),
+            CategoryDisplayModel(title: "赛事", contentVC: AreaLiveViewController(areaID: 13)),
         ]
         super.viewDidLoad()
     }
@@ -119,7 +119,7 @@ extension WebRequest {
         struct Resp: Codable {
             let rooms: [LiveRoom]
         }
-        let resp: Resp = try await request(url: EndPoint.liveRoom, parameters: ["page_size": 10, "page": page])
+        let resp: Resp = try await requestWithWbi(url: EndPoint.liveRoom, parameters: ["page_size": 10, "page": page])
         return resp.rooms
     }
 
@@ -128,7 +128,7 @@ extension WebRequest {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await request(url: EndPoint.areaLive, parameters: ["platform": "web", "parent_area_id": area, "area_id": 0, "page": page])
+        let resp: Resp = try await requestWithWbi(url: EndPoint.areaLive, parameters: ["platform": "web", "parent_area_id": area, "area_id": 0, "page": page])
         return resp.list
     }
 
@@ -137,7 +137,7 @@ extension WebRequest {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await request(url: EndPoint.hotLive, parameters: ["platform": "web", "sort": "online", "page_size": 30, "page": page])
+        let resp: Resp = try await requestWithWbi(url: EndPoint.hotLive, parameters: ["platform": "web", "sort": "online", "page_size": 30, "page": page])
         return resp.list
     }
 
@@ -146,7 +146,7 @@ extension WebRequest {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await request(url: EndPoint.recommandLive, parameters: ["platform": "web", "page_size": 30, "page": page])
+        let resp: Resp = try await requestWithWbi(url: EndPoint.recommandLive, parameters: ["platform": "web", "page_size": 30, "page": page])
         return resp.list
     }
 }

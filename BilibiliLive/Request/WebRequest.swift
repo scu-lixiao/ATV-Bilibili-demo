@@ -249,6 +249,42 @@ enum WebRequest {
             }
         }
     }
+
+    // MARK: - WBI Signed Request Methods
+
+    /// Async request method with WBI signature support
+    /// - Parameters:
+    ///   - method: HTTP method
+    ///   - url: Request URL
+    ///   - parameters: Request parameters
+    ///   - headers: Custom headers
+    ///   - decoder: Custom JSON decoder
+    ///   - dataObj: Data object key in response
+    ///   - noCookie: Whether to disable cookies
+    /// - Returns: Decoded response object
+    static func requestWithWbi<T: Decodable>(method: HTTPMethod = .get,
+                                             url: URLConvertible,
+                                             parameters: Parameters = [:],
+                                             headers: [String: String]? = nil,
+                                             decoder: JSONDecoder? = nil,
+                                             noCookie: Bool = false,
+                                             dataObj: String = "data") async throws -> T
+    {
+        return try await withCheckedThrowingContinuation { continuation in
+            addWbiSign(method: method, url: url, parameters: parameters) { signedUrl in
+                guard let signedUrl = signedUrl else {
+                    continuation.resume(throwing: RequestError.networkFail)
+                    return
+                }
+
+                // Use the signed URL directly
+                request(method: method, url: signedUrl, parameters: [:], headers: headers, decoder: decoder, dataObj: dataObj, noCookie: noCookie) {
+                    (result: Result<T, RequestError>) in
+                    continuation.resume(with: result)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Video
