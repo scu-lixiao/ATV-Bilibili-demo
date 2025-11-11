@@ -12,8 +12,8 @@ import UIKit
 class LiveViewController: CategoryViewController {
     override func viewDidLoad() {
         categories = [
-            CategoryDisplayModel(title: "推荐", contentVC: AreaLiveViewController(areaID: -1)),
             CategoryDisplayModel(title: "关注", contentVC: MyLiveViewController()),
+            CategoryDisplayModel(title: "推荐", contentVC: AreaLiveViewController(areaID: -1)),
             CategoryDisplayModel(title: "人气", contentVC: AreaLiveViewController(areaID: 0)),
             CategoryDisplayModel(title: "娱乐", contentVC: AreaLiveViewController(areaID: 1)),
             CategoryDisplayModel(title: "虚拟主播", contentVC: AreaLiveViewController(areaID: 9)),
@@ -115,38 +115,42 @@ extension WebRequest.EndPoint {
 }
 
 extension WebRequest {
+    // 关注 - 不需要WBI签名
     static func requestLiveRoom(page: Int) async throws -> [LiveRoom] {
         struct Resp: Codable {
             let rooms: [LiveRoom]
         }
-        let resp: Resp = try await requestWithWbi(url: EndPoint.liveRoom, parameters: ["page_size": 10, "page": page])
+        let resp: Resp = try await request(url: EndPoint.liveRoom, parameters: ["page_size": 10, "page": page])
         return resp.rooms
     }
 
+    // 具体分区 - 不需要WBI签名（直播API使用独立签名机制）
     static func requestAreaLiveRoom(area: Int, page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await requestWithWbi(url: EndPoint.areaLive, parameters: ["platform": "web", "parent_area_id": area, "area_id": 0, "page": page])
+        let resp: Resp = try await request(url: EndPoint.areaLive, parameters: ["platform": "web", "parent_area_id": area, "area_id": 0, "page": page])
         return resp.list
     }
 
+    // 人气 - 不需要WBI签名
     static func requestHotLiveRoom(page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await requestWithWbi(url: EndPoint.hotLive, parameters: ["platform": "web", "sort": "online", "page_size": 30, "page": page])
+        let resp: Resp = try await request(url: EndPoint.hotLive, parameters: ["platform": "web", "sort": "online", "page_size": 30, "page": page])
         return resp.list
     }
 
+    // 推荐 - 不需要WBI签名
     static func requestRecommandLiveRoom(page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
         }
 
-        let resp: Resp = try await requestWithWbi(url: EndPoint.recommandLive, parameters: ["platform": "web", "page_size": 30, "page": page])
+        let resp: Resp = try await request(url: EndPoint.recommandLive, parameters: ["platform": "web", "page_size": 30, "page": page])
         return resp.list
     }
 }
