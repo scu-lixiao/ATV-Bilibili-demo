@@ -3,14 +3,18 @@
 //  BilibiliLive
 //
 //  Created by yicheng on 2022/10/29.
+//  Enhanced with Glass Navigation Effect - 2025/11/11
 //
 
 import UIKit
 
 class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
-    let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .light))
     let selectedWhiteView = UIView()
     let titleLabel = UILabel()
+    
+    // 添加一个回调，用于通知父视图焦点变化
+    var onFocusChanged: ((Bool) -> Void)?
+    
     override var isSelected: Bool {
         didSet {
             updateView()
@@ -20,38 +24,80 @@ class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
     override func setup() {
         super.setup()
         scaleFactor = 1.05
-
         addsubViews()
     }
 
     func addsubViews() {
-        contentView.addSubview(effectView)
-        effectView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-        effectView.layer.cornerRadius = moreLittleSornerRadius
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-        selectedWhiteView.backgroundColor = UIColor.white
+        // Apply glass effect container
+        selectedWhiteView.setCornerRadius(cornerRadius: moreLittleSornerRadius)
         selectedWhiteView.isHidden = !isFocused
-        effectView.contentView.addSubview(selectedWhiteView)
+        contentView.addSubview(selectedWhiteView)
         selectedWhiteView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
-        effectView.contentView.addSubview(titleLabel)
+        
+        // Apply initial glass state
+        applyGlassEffect(isFocused: false)
+        
+        contentView.addSubview(titleLabel)
         titleLabel.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(26)
-            make.trailing.equalToSuperview().offset(26)
+            make.trailing.equalToSuperview().offset(-26)
             make.top.bottom.equalToSuperview().inset(8)
         }
         titleLabel.textAlignment = .left
         titleLabel.font = UIFont.systemFont(ofSize: 30, weight: .medium)
-        titleLabel.textColor = .black
+        titleLabel.textColor = UIColor(named: "titleColor") ?? .white
+    }
+
+    // MARK: - Glass Effect Methods
+    
+    /// Applies glass effect based on focus state
+    func applyGlassEffect(isFocused: Bool) {
+        if #available(tvOS 26.0, *) {
+            // Use the new multi-layer glass system
+            GlassNavigationHelper.applyMultiLayerGlass(
+                to: selectedWhiteView,
+                config: .menuItem,
+                isFocused: isFocused
+            )
+        } else {
+            // Fallback for older tvOS versions
+            if isFocused {
+                selectedWhiteView.backgroundColor = UIColor(named: "menuCellColor")?.withAlphaComponent(0.3)
+                selectedWhiteView.layer.borderWidth = 0.5
+                selectedWhiteView.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
+            } else {
+                selectedWhiteView.backgroundColor = UIColor(named: "menuCellColor")?.withAlphaComponent(0.15)
+                selectedWhiteView.layer.borderWidth = 0
+            }
+            selectedWhiteView.layer.cornerRadius = moreLittleSornerRadius
+        }
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        updateView()
+        
+        // 通知父视图焦点变化
+        onFocusChanged?(isFocused)
+        
+        // Animate glass effect transition with spring physics
+        coordinator.addCoordinatedAnimations({ [weak self] in
+            guard let self = self else { return }
+            
+            // Update glass effect
+            self.applyGlassEffect(isFocused: self.isFocused)
+            self.updateView()
+            
+            // Enhanced scale animation for focus
+            if self.isFocused {
+                self.transform = CGAffineTransform(scaleX: 1.03, y: 1.03)
+                self.titleLabel.alpha = 1.0
+            } else {
+                self.transform = CGAffineTransform.identity
+                self.titleLabel.alpha = 0.85
+            }
+        }, completion: nil)
     }
 
     func updateView() {

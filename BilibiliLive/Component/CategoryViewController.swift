@@ -60,16 +60,24 @@ class CategoryViewController: UIViewController, BLTabBarContentVCProtocol {
         let backgroundView = UIView()
         // Apply Premium visual effects matching MenusViewController
         if #available(tvOS 26.0, *) {
+            // 🎨 统一使用 glassPinkTintDark（与主导航一致）
             backgroundView.applyLiquidGlass(
                 style: .clear,
-                tintColor: UIColor.glassPinkTint,
+                tintColor: UIColor.glassPinkTintDark,
                 cornerRadius: bigSornerRadius,
                 interactive: false
             )
+            
+            // 🔲 添加玻璃描边（与主导航一致）
+            backgroundView.layer.borderWidth = 1.0
+            backgroundView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
         } else if #available(tvOS 18.0, *) {
             backgroundView.setGlassEffectView(style: .clear,
                                              cornerRadius: bigSornerRadius,
                                              tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
+            // 旧版本也添加描边
+            backgroundView.layer.borderWidth = 0.5
+            backgroundView.layer.borderColor = UIColor.lightGray.cgColor
         } else {
             backgroundView.setBlurEffectView(cornerRadius: bigSornerRadius)
             backgroundView.setCornerRadius(cornerRadius: bigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
@@ -111,7 +119,7 @@ extension CategoryViewController: UICollectionViewDataSource {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! BLSettingLineCollectionViewCell
         cell.titleLabel.text = categories[indexPath.item].title
 
-        cell.didUpdateFocus = { [weak self] isFocused in
+        cell.onFocusChanged = { [weak self] isFocused in
             self?.isShowMenus(isFocused: isFocused)
         }
         return cell
