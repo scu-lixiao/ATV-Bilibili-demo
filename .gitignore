@@ -23,6 +23,7 @@ doc/
 
 # GitHub Configuration
 .github/
+.github/copilot-instructions.md
 
 # MCP Configuration
 .mcp.json

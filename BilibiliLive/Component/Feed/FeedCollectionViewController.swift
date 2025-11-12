@@ -80,6 +80,9 @@ class FeedCollectionViewController: UIViewController {
 
     var didSelectToLastLeft: (() -> Void)?
     private var beforeSeleteIndex: IndexPath?
+    
+    // 标志位：是否正在滚动到顶部（防止在滚动过程中立即调出导航栏）
+    private var isScrollingToTop = false
 
     private let viewModel = BannerViewModel()
     private var bannerSwiftUIView: BannerView?
@@ -250,15 +253,34 @@ class FeedCollectionViewController: UIViewController {
     }
 
     func handleMenuPress() {
+        // 如果正在滚动到顶部，忽略此次 Menu 按键（避免立即调出导航栏）
+        if isScrollingToTop {
+            Logger.debug("Menu press ignored - still scrolling to top")
+            return
+        }
+        
+        // 检查是否需要滚动到顶部
         if collectionView.contentOffset.y > 100 {
+            isScrollingToTop = true
             scrollPositionToTop()
-        } else if collectionView.contentOffset.y == -collectionEdgeInsetTop
+            
+            // 延迟重置标志位，确保滚动动画完成后才能调出导航栏
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.isScrollingToTop = false
+            }
+            return
+        } 
+        
+        // 检查是否需要重置顶部视图
+        if collectionView.contentOffset.y == -collectionEdgeInsetTop
             && isShowTopCover?() ?? false
             && viewModel.offsetY != 0 {
             resetTopView()
-        } else {
-            NotificationCenter.default.post(name: EVENT_COLLECTION_TO_SHOW_MENU, object: nil)
+            return
         }
+        
+        // 已经在顶部且顶部视图已重置，调出导航栏
+        NotificationCenter.default.post(name: EVENT_COLLECTION_TO_SHOW_MENU, object: nil)
     }
 
     // MARK: - Private
@@ -343,10 +365,9 @@ class FeedCollectionViewController: UIViewController {
 
     func scrollPositionToTop() {
         let indexPath = IndexPath(item: 0, section: 0)
-//            collectionView.scrollToItem(at: indexPath, at: .top, animated: true)
-//            collectionView.setContentOffset(CGPoint(x: 0, y: -collectionEdgeInsetTop), animated: true)
+        // 使用平滑滚动动画，而不是 reloadData
         collectionView.selectItem(at: indexPath, animated: true, scrollPosition: .top)
-        collectionView.reloadData()
+        // 移除 reloadData()，避免打断滚动动画和焦点流程
     }
 }
 

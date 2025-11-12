@@ -27,9 +27,6 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     weak var currentViewController: UIViewController?
     private var menuIsShowing = false
     private var selectMenuItem: CellModel?
-    
-    // 防止 Menu 按键重复触发
-    private var isProcessingMenuPress = false
 
     @IBOutlet var menusView: UIView! {
         didSet {
@@ -327,20 +324,16 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         for press in presses {
             switch press.type {
             case .menu:
-                // 处理 Menu 按键
-                // 防止重复触发
-                guard !isProcessingMenuPress else {
-                    Logger.debug("Menu press ignored - already processing")
-                    return
+                // 如果导航栏已展开，不拦截 Menu 按键，让系统处理（退出应用返回主界面）
+                if menuIsShowing {
+                    Logger.debug("Menu pressed - menu is showing, passing to super (exit app)")
+                    // 不设置 didHandlePress，让事件传递给系统退出应用
                 }
-                
-                isProcessingMenuPress = true
-                handleMenuPress()
-                didHandlePress = true
-                
-                // 延迟重置标志，防止快速重复触发
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    self?.isProcessingMenuPress = false
+                // 如果导航栏未展开，拦截 Menu 按键，触发调出导航栏的逻辑
+                else {
+                    Logger.debug("Menu pressed - menu is hidden, triggering handleMenuPress")
+                    handleMenuPress()
+                    didHandlePress = true
                 }
                 
             case .playPause:
@@ -363,13 +356,7 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     }
     
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        // 重置处理标志，防止状态异常
-        for press in presses {
-            if press.type == .menu {
-                isProcessingMenuPress = false
-                Logger.debug("Menu press cancelled - reset processing flag")
-            }
-        }
+        // pressesCancelled 也要正确传递给 super
         super.pressesCancelled(presses, with: event)
     }
     
