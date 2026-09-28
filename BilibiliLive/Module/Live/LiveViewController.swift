@@ -114,8 +114,10 @@ extension WebRequest.EndPoint {
     static let recommandLive = "https://api.live.bilibili.com/xlive/web-interface/v1/second/getUserRecommend"
 }
 
+// 以下直播接口都直接使用 request：requestData 会给所有 GET 请求自动加一次 WBI 签名（含 w_webid）。
+// 不要改用对已签名 URL 再次调用 request 的写法，重复签名会导致 -352。
 extension WebRequest {
-    // 关注 - 不需要WBI签名
+    // 关注
     static func requestLiveRoom(page: Int) async throws -> [LiveRoom] {
         struct Resp: Codable {
             let rooms: [LiveRoom]
@@ -124,7 +126,7 @@ extension WebRequest {
         return resp.rooms
     }
 
-    // 具体分区 - 不需要WBI签名（直播API使用独立签名机制）
+    // 具体分区
     static func requestAreaLiveRoom(area: Int, page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
@@ -134,7 +136,7 @@ extension WebRequest {
         return resp.list
     }
 
-    // 人气 - 不需要WBI签名
+    // 人气
     static func requestHotLiveRoom(page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
@@ -144,7 +146,7 @@ extension WebRequest {
         return resp.list
     }
 
-    // 推荐 - 不需要WBI签名
+    // 推荐
     static func requestRecommandLiveRoom(page: Int) async throws -> [AreaLiveRoom] {
         struct Resp: Codable {
             let list: [AreaLiveRoom]
