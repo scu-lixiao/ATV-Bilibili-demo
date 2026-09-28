@@ -15,7 +15,6 @@ let normailSornerRadius = 25.0
 let lessBigSornerRadius = 35.0
 let bigSornerRadius = 45.0
 
-let EVENT_COLLECTION_TO_TOP = NSNotification.Name("EVENT_COLLECTION_TO_TOP")
 let EVENT_COLLECTION_TO_SHOW_MENU = NSNotification.Name("EVENT_COLLECTION_TO_SHOW_MENU")
 
 protocol DisplayData: Hashable {
@@ -78,7 +77,6 @@ class FeedCollectionViewController: UIViewController {
     }
 
     private var topCoverState = TopCoverState.expanded
-    private var menuObserver: NSObjectProtocol?
     
     // 标志位：是否正在滚动到顶部（防止在滚动过程中立即调出导航栏）
     private var isScrollingToTop = false
@@ -108,12 +106,6 @@ class FeedCollectionViewController: UIViewController {
     private lazy var dataSource = makeDataSource()
 
     // MARK: - Public
-
-    deinit {
-        if let menuObserver {
-            NotificationCenter.default.removeObserver(menuObserver)
-        }
-    }
 
     func show(in vc: UIViewController) {
         vc.addChild(self)
@@ -250,13 +242,9 @@ class FeedCollectionViewController: UIViewController {
 
         collectionView.dataSource = dataSource
         collectionView.delegate = self
-
-        // block 形式的观察者需要保存 token 并在 deinit 移除，否则会一直留在通知中心
-        menuObserver = NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_TOP, object: nil, queue: .main) { [weak self] _ in
-            self?.handleMenuPress()
-        }
     }
 
+    /// 由 MenusViewController 直接调用（只会调用当前可见的页面）
     func handleMenuPress() {
         // 如果正在滚动到顶部，忽略此次 Menu 按键（避免立即调出导航栏）
         if isScrollingToTop {

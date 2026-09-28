@@ -124,8 +124,30 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         }
     }
 
+    /// 导航栏收起时按 Menu：交给当前可见的信息流页面处理（回到顶部 → 恢复大图 → 请求展开导航栏），
+    /// 没有信息流的页面（设置、关注UP 等）直接展开导航栏。
+    ///
+    /// 不要改成通知广播：切换页面后旧页面并不会释放，广播会让不可见的页面也响应，
+    /// 是否展开导航栏就取决于这些隐藏页面的滚动位置。
     func handleMenuPress() {
-        NotificationCenter.default.post(name: EVENT_COLLECTION_TO_TOP, object: nil)
+        if let feed = visibleFeed(in: currentViewController) {
+            feed.handleMenuPress()
+        } else {
+            showMenus()
+        }
+    }
+
+    private func visibleFeed(in viewController: UIViewController?) -> FeedCollectionViewController? {
+        guard let viewController, viewController.viewIfLoaded?.window != nil else { return nil }
+        if let feed = viewController as? FeedCollectionViewController {
+            return feed
+        }
+        for child in viewController.children {
+            if let feed = visibleFeed(in: child) {
+                return feed
+            }
+        }
+        return nil
     }
 
     func showMenus() {
