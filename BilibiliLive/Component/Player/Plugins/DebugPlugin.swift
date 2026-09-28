@@ -108,6 +108,13 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
             logs += "\n" + videoFormatInfo
         }
 
+        // 动态范围 / 帧率匹配状态：criteria none 表示播放器没有请求电视切换模式
+        if let displayManager = containerView?.window?.avDisplayManager {
+            let criteria = displayManager.preferredDisplayCriteria != nil ? "set" : "none"
+            let switching = displayManager.isDisplayModeSwitchInProgress ? ", switching" : ""
+            logs += "\n🖥️ Match content: system \(displayManager.isDisplayCriteriaMatchingEnabled ? "on" : "off"), criteria \(criteria)\(switching), HDR output \(AVPlayer.eligibleForHDRPlayback ? "yes" : "no")"
+        }
+
         guard let log = player.currentItem?.accessLog() else { return logs }
         guard let item = log.events.last else { return logs }
         let uri = item.uri ?? ""
@@ -477,15 +484,14 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         // 优先使用生成播放列表时确定的动态范围（vr = SDR/PQ/HLG，dv = 杜比视界 Profile）
         if let range = queryItems.first(where: { $0.name == "vr" })?.value {
             let source = queryItems.contains(where: { $0.name == "probed" }) ? "" : " (inferred)"
-            let display = AVPlayer.eligibleForHDRPlayback ? "" : " · display SDR only"
             if let profile = queryItems.first(where: { $0.name == "dv" })?.value {
-                return "🎆 Dynamic Range: Dolby Vision \(profile) (\(range))\(source)\(display)"
+                return "🎆 Dynamic Range: Dolby Vision \(profile) (\(range))\(source)"
             }
             switch range {
             case "PQ":
-                return "✨ Dynamic Range: HDR10 (PQ)\(source)\(display)"
+                return "✨ Dynamic Range: HDR10 (PQ)\(source)"
             case "HLG":
-                return "🌟 Dynamic Range: HLG\(source)\(display)"
+                return "🌟 Dynamic Range: HLG\(source)"
             default:
                 return "☀️ Dynamic Range: SDR\(source)"
             }

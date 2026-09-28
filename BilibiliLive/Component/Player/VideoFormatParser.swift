@@ -513,14 +513,14 @@ struct HLSVideoFormat: Equatable {
     static func resolve(qn: Int, codecs apiCodecs: String, width: Int?, height: Int?, frameRate: Double?,
                         format: VideoFormatInfo?) -> HLSVideoFormat
     {
-        if let format, let resolved = resolve(format: format, apiCodecs: apiCodecs) {
+        if let format, let resolved = resolve(format: format, qn: qn, apiCodecs: apiCodecs, width: width, height: height, frameRate: frameRate) {
             return resolved
         }
         return infer(qn: qn, codecs: apiCodecs, width: width, height: height, frameRate: frameRate)
     }
 
     /// 根据初始化分段中的真实信息生成声明
-    private static func resolve(format: VideoFormatInfo, apiCodecs: String) -> HLSVideoFormat? {
+    private static func resolve(format: VideoFormatInfo, qn: Int, apiCodecs: String, width: Int?, height: Int?, frameRate: Double?) -> HLSVideoFormat? {
         let isHEVC = ["hvc1", "hev1", "dvh1", "dvhe"].contains(format.sampleEntry)
         guard isHEVC else { return nil }
         let baseCodec = format.hevcCodec ?? normalize(codecs: apiCodecs)
@@ -533,7 +533,12 @@ struct HLSVideoFormat: Equatable {
         default: range = nil
         }
 
-        if let dv = format.dolbyVision, dv.hasEnhancementLayer == false {
+        var dolbyVision = format.dolbyVision
+        if dolbyVision == nil {
+            dolbyVision = dolbyVisionHint(qn: qn, codecs: apiCodecs, width: width, height: height, frameRate: frameRate, range: range)
+        }
+
+        if let dv = dolbyVision, dv.hasEnhancementLayer == false {
             switch dv.profile {
             case 5:
                 // Profile 5 没有可兼容的基础层，只能以杜比视界播放
@@ -560,7 +565,7 @@ struct HLSVideoFormat: Equatable {
                 }
                 let dvCodec = String(format: "dvh1.08.%02d", dv.level)
                 // 缺少 hvcC 时接口 codecs 可能是 dvh1.08.LL，基础层声明需要换成对应 level 的 HEVC Main 10
-                let hevcCodec = baseCodec.hasPrefix("hvc1.") ? baseCodec : hevcBaseCodec(forDolbyVisionLevel: dv.level)
+                let hevcCodec = baseCodec.hasPrefix("hvc1.") ? dolbyVisionBaseCodec(baseCodec) : hevcBaseCodec(forDolbyVisionLevel: dv.level)
                 return HLSVideoFormat(codecs: hevcCodec,
                                       supplementalCodecs: "\(dvCodec)/\(brand)",
                                       videoRange: finalRange,
@@ -572,10 +577,35 @@ struct HLSVideoFormat: Equatable {
         }
 
         // Profile 7 等 Apple 不支持的杜比视界，退回按基础层（HDR10）播放
-        guard let baseRange = range ?? (format.dolbyVision != nil ? .pq : nil) else {
+        guard let baseRange = range ?? (dolbyVision != nil ? .pq : nil) else {
             return nil
         }
         return HLSVideoFormat(codecs: baseCodec, supplementalCodecs: nil, videoRange: baseRange, dolbyVisionProfile: nil, isProbed: true)
+    }
+
+    /// 初始化分段里没有 dvcC / dvvC，但接口标明是杜比视界时（B 站 126 常返回 hvc1.2.4.L150.90），
+    /// 仍按杜比视界声明，否则只会以 HLG / HDR10 播放。Profile / level 取自接口 codecs，缺失时按 Profile 8 与分辨率估算；
+    /// 兼容 ID 按实际传输特性确定，PQ 为 8.1，其余按 B 站杜比视界的 8.4（HLG）处理
+    private static func dolbyVisionHint(qn: Int, codecs: String, width: Int?, height: Int?, frameRate: Double?,
+                                        range: VideoRange?) -> VideoFormatInfo.DolbyVision?
+    {
+        let parts = normalize(codecs: codecs).split(separator: ".").map(String.init)
+        let isAPIDolbyVision = parts.first == "dvh1"
+        guard isAPIDolbyVision || qn == Quality.dolbyVision else { return nil }
+        let profile = isAPIDolbyVision && parts.count >= 2 ? Int(parts[1]) ?? 8 : 8
+        guard profile == 5 || profile == 8 else { return nil }
+        let apiLevel = isAPIDolbyVision && parts.count >= 3 ? Int(parts[2]) : nil
+        let level = apiLevel ?? dolbyVisionLevel(width: width, height: height, frameRate: frameRate)
+        let compatibilityID = profile == 5 ? 0 : range == .pq ? 1 : 4
+        return .init(profile: profile, level: level, compatibilityID: compatibilityID, hasEnhancementLayer: false)
+    }
+
+    /// 杜比视界基础层的约束标志统一声明为 B0（Apple HLS 规范示例的写法）。
+    /// B 站流里是 90，此前按 hvc1.2.4.L150.90 声明时报 -12860，改为 B0 并加上 SUPPLEMENTAL-CODECS 后可正常播放
+    private static func dolbyVisionBaseCodec(_ codec: String) -> String {
+        let parts = codec.split(separator: ".")
+        guard parts.count >= 4 else { return codec }
+        return parts.prefix(4).joined(separator: ".") + ".B0"
     }
 
     /// 初始化分段下载/解析失败时，按接口返回的 qn 与 codecs 推断
