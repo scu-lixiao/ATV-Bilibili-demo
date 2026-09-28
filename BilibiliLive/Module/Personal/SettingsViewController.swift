@@ -127,7 +127,7 @@ class SettingsViewController: UIViewController, UICollectionViewDelegate {
             }
 
             SectionModel(title: "音视频") {
-                Actions(title: "最高画质", message: "4k以上需要大会员",
+                Actions(title: "最高画质", message: "4K、HDR真彩与杜比视界需要大会员，电视不支持HDR时自动播放SDR版本",
                         current: Settings.mediaQuality.desp,
                         options: MediaQualityEnum.allCases,
                         optionString: MediaQualityEnum.allCases.map({ $0.desp })) {

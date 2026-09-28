@@ -44,10 +44,12 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
             "Referer": Keys.referer(for: playData.aid),
         ]
         let asset = AVURLAsset(url: playURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-        playerDelegate = BilibiliVideoResourceLoaderDelegate()
-        playerDelegate?.setBilibili(info: urlInfo, subtitles: playerInfo?.subtitle?.subtitles ?? [], aid: playData.aid)
+        let playerDelegate = BilibiliVideoResourceLoaderDelegate()
+        self.playerDelegate = playerDelegate
+        // 会先下载并解析 HDR / 杜比视界流的初始化分段，以生成准确的 CODECS 与 VIDEO-RANGE
+        await playerDelegate.setBilibili(info: urlInfo, subtitles: playerInfo?.subtitle?.subtitles ?? [], aid: playData.aid)
         if Settings.contentMatchOnlyInHDR {
-            if playerDelegate?.isHDR != true {
+            if !playerDelegate.isHDR {
                 playerVC?.appliesPreferredDisplayCriteriaAutomatically = false
             }
         }

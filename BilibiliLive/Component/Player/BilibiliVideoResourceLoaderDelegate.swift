@@ -69,82 +69,69 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         """
     }
 
-    private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
+    private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int, format: HLSVideoFormat) {
         guard !videoCodecBlackList.contains(info.codecs) else { return }
         let subtitlePlaceHolder = hasSubtitle ? ",SUBTITLES=\"subs\"" : ""
-        let isDolby = info.id == MediaQualityEnum.quality_hdr_dolby.qn
-        let isHDR10 = info.id == 125
-        // hdr 10 formate exp: hev1.2.4.L156.90
-        //  Codec.Profile.Flags.TierLevel.Constraints
-        let isHDR = isDolby || isHDR10
-        if isHDR {
-            self.isHDR = true
+        if format.isHDR {
+            isHDR = true
         }
-        var videoRange = isHDR ? "HLG" : "SDR"
-        var codecs = info.codecs
-        var supplementCodesc = ""
-        // TODO: Need update all codecs with https://developer.apple.com/documentation/http_live_streaming/http_live_streaming_hls_authoring_specification_for_apple_devices/hls_authoring_specification_for_apple_devices_appendixes
         var framerate = info.frame_rate ?? "25"
-
-        // CRITICAL FIX: Convert hev1 to hvc1 for Apple compatibility
-        // Apple devices only support hvc1 format, not hev1
-        // This conversion is ONLY for HEVC-encoded videos (both SDR and HDR)
-        // AVC (avc1) videos are not affected by this conversion
-        if codecs.hasPrefix("hev1.") {
-            codecs = codecs.replacingOccurrences(of: "hev1.", with: "hvc1.")
-            Logger.debug("Converted hev1 to hvc1 for Apple compatibility: \(codecs)")
-        }
-
-        if isHDR10 {
-            videoRange = "PQ"
+        if info.id == HLSVideoFormat.Quality.hdr {
             if let value = Double(framerate), value <= 30 {} else {
                 framerate = "30"
             }
         }
-        // Handle Bilibili Dolby Vision: HEVC Main 10 Profile
-        // Bilibili returns hvc1.2.4.L15x.90 format, need to convert to Apple standard format
-        if isDolby && codecs.hasPrefix("hvc1.2.4") {
-            // Convert to Apple standard: hvc1.Profile.Compatibility.Level.Constraints
-            // FIXED: hvc1.2.4.L150.90 -> hvc1.2.4.L150.b0 (not hvc1.2.40000000.L150.B0)
-            let levelMatch = codecs.range(of: "L15[0-9]", options: .regularExpression)
-            if let range = levelMatch {
-                let level = String(codecs[range])
-                // Correct format: hvc1.2(Main10).4(compatibility).Level.b0(constraints)
-                codecs = "hvc1.2.4.\(level).b0"
-                supplementCodesc = "dvh1.08.07/db4h"
-                videoRange = "HLG"  // Dolby Vision Profile 8.4 uses HLG
-            }
-        } else if codecs == "dvh1.08.07" || codecs == "dvh1.08.03" {
-            // Dolby Vision Profile 8.4/8.7 - HLG transfer function
-            supplementCodesc = codecs + "/db4h"
-            codecs = "hvc1.2.4.L153.b0"
-            videoRange = "HLG"
-        } else if codecs == "dvh1.08.06" {
-            // Dolby Vision Profile 8.1 - PQ transfer function
-            supplementCodesc = codecs + "/db1p"
-            codecs = "hvc1.2.4.L150.b0"  // Fixed: added .b0 constraint
-            videoRange = "PQ"
-        } else if codecs.hasPrefix("dvh1.05") {
-            // Dolby Vision Profile 5 - PQ transfer function
-            videoRange = "PQ"
-        } else if isHDR {
-            Logger.warn("unknown hdr codecs: \(codecs)")
-        }
-
         if let value = Double(framerate), value >= 60 {
             framerate = "60"
         }
 
-        if supplementCodesc.count > 0 {
-            supplementCodesc = ",SUPPLEMENTAL-CODECS=\"\(supplementCodesc)\""
+        var supplementCodecs = ""
+        if let supplemental = format.supplementalCodecs {
+            supplementCodecs = ",SUPPLEMENTAL-CODECS=\"\(supplemental)\""
+        }
+        var formatQuery = "&vr=\(format.videoRange.rawValue)"
+        if let dvProfile = format.dolbyVisionProfile {
+            formatQuery += "&dv=\(dvProfile)"
+        }
+        if format.isProbed {
+            formatQuery += "&probed=1"
         }
         let content = """
-        #EXT-X-STREAM-INF:AUDIO="audio"\(subtitlePlaceHolder),CODECS="\(codecs)"\(supplementCodesc),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(info.bandwidth),VIDEO-RANGE=\(videoRange)
-        \(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)&rate=\(info.frame_rate ?? framerate)&width=\(info.width ?? 0)&host=\(URL(string: url)?.host ?? "none")&range=\(info.id)
+        #EXT-X-STREAM-INF:AUDIO="audio"\(subtitlePlaceHolder),CODECS="\(format.codecs)"\(supplementCodecs),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(info.bandwidth),VIDEO-RANGE=\(format.videoRange.rawValue)
+        \(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)&rate=\(info.frame_rate ?? framerate)&width=\(info.width ?? 0)&host=\(URL(string: url)?.host ?? "none")&range=\(info.id)\(formatQuery)
 
         """
         masterPlaylist.append(content)
         videoInfo.append(PlaybackInfo(info: info, url: url, duration: duration))
+    }
+
+    /// 解析 HDR / 杜比视界候选流的初始化分段，得到真实的编码与色彩信息。
+    /// 下载结果（含 sidx）由 SidxDownloader 缓存，AVPlayer 随后请求子播放列表时直接复用，不会产生额外请求。
+    @MainActor
+    private func probeVideoFormats(_ videos: [VideoPlayURLInfo.DashInfo.DashMediaInfo]) async -> [VideoPlayURLInfo.DashInfo.DashMediaInfo: VideoFormatInfo] {
+        let candidates = Set(videos.filter { HLSVideoFormat.needsProbe(qn: $0.id, codecs: $0.codecs) })
+        guard !candidates.isEmpty else { return [:] }
+        let cache = segmentInfoCache
+        return await withTaskGroup(of: (VideoPlayURLInfo.DashInfo.DashMediaInfo, VideoFormatInfo?).self) { group in
+            for video in candidates {
+                group.addTask {
+                    let format = await withDeadline(seconds: formatProbeTimeout) {
+                        await cache.sidx(from: video)?.format
+                    }
+                    return (video, format)
+                }
+            }
+            var result = [VideoPlayURLInfo.DashInfo.DashMediaInfo: VideoFormatInfo]()
+            for await (video, format) in group {
+                if let format {
+                    Logger.debug("probe video format \(video.id): \(String(describing: format))")
+                    result[video] = format
+                } else {
+                    Logger.warn("probe video format failed: \(video.id) \(video.codecs), fallback to inferred format")
+                }
+            }
+            return result
+        }
     }
 
     private func getVideoPlayList(info: PlaybackInfo) async -> String {
@@ -269,7 +256,8 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         playlists.append(playList)
     }
 
-    func setBilibili(info: VideoPlayURLInfo, subtitles: [SubtitleData], aid: Int) {
+    @MainActor
+    func setBilibili(info: VideoPlayURLInfo, subtitles: [SubtitleData], aid: Int) async {
         playInfo = info
         self.aid = aid
         reset()
@@ -284,9 +272,29 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             }
         }
 
-        for video in videos {
+        let probedFormats = await probeVideoFormats(videos)
+        var videoFormats = videos.map { video in
+            let format = HLSVideoFormat.resolve(qn: video.id,
+                                                codecs: video.codecs,
+                                                width: video.width,
+                                                height: video.height,
+                                                frameRate: video.frame_rate.flatMap { Double($0) },
+                                                format: probedFormats[video])
+            Logger.debug("video \(video.id) \(video.codecs) -> \(format.codecs) \(format.supplementalCodecs ?? "") \(format.videoRange.rawValue) (\(format.dynamicRangeDescription), probed: \(format.isProbed))")
+            return (video: video, format: format)
+        }
+
+        // 显示设备不支持 HDR 时，只要还有 SDR 流就不再提供 HDR / 杜比视界流，
+        // 避免在 SDR 电视上播放经色调映射的 HDR 画面并浪费带宽
+        if !AVPlayer.eligibleForHDRPlayback, videoFormats.contains(where: { !$0.format.isHDR }) {
+            videoFormats.removeAll(where: { $0.format.isHDR })
+            videos = videoFormats.map(\.video)
+            Logger.info("display is not eligible for HDR playback, HDR variants removed")
+        }
+
+        for (video, format) in videoFormats {
             for url in video.playableURLs {
-                addVideoPlayBackInfo(info: video, url: url, duration: info.dash.duration)
+                addVideoPlayBackInfo(info: video, url: url, duration: info.dash.duration, format: format)
             }
         }
 
@@ -493,6 +501,8 @@ actor SidxDownloader {
     struct SidxResult {
         let sidx: SidxParseUtil.Sidx
         let url: String
+        /// 视频流初始化分段中解析出的格式信息（音频流为 nil）
+        let format: VideoFormatInfo?
     }
 
     private enum CacheEntry {
@@ -537,20 +547,115 @@ actor SidxDownloader {
 
     // 依次尝试多个 CDN，返回第一个成功下载并解析出 sidx 的 URL，作为后续分片的请求地址
     private func downloadSidx(info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxResult? {
-        let range = info.segment_base.index_range
+        let header = DashHeaderRange(segmentBase: info.segment_base)
+        let range = header.map { "\($0.requestRange.lowerBound)-\($0.requestRange.upperBound)" } ?? info.segment_base.index_range
+        let isVideo = info.mime_type.hasPrefix("video")
         for url in info.playableURLs.prefix(3) {
             if let res = try? await Self.session.request(url,
                                                          headers: ["Range": "bytes=\(range)",
                                                                    "Referer": "https://www.bilibili.com/"])
                 .validate()
                 .serializingData().result.get(),
-                let segment = SidxParseUtil.processIndexData(data: res),
+                let indexData = header == nil ? res : header?.indexData(in: res),
+                let segment = SidxParseUtil.processIndexData(data: indexData),
                 !segment.segments.isEmpty
             {
-                return SidxResult(sidx: segment, url: url)
+                var format: VideoFormatInfo?
+                if isVideo, let initData = header?.initData(in: res) {
+                    format = MP4FormatParser.parseVideoFormat(initSegment: initData)
+                }
+                return SidxResult(sidx: segment, url: url, format: format)
             }
             Logger.warn("sidx download failed on \(URLComponents(string: url)?.host ?? url), try next url")
         }
         return nil
+    }
+}
+
+/// DASH SegmentBase 中初始化分段（ftyp + moov）与 sidx 通常紧挨着，
+/// 一次 Range 请求同时取回两者：sidx 用于生成分片列表，moov 用于解析 HDR / 杜比视界格式
+struct DashHeaderRange {
+    let initRange: ClosedRange<Int>?
+    let indexRange: ClosedRange<Int>
+    let requestRange: ClosedRange<Int>
+
+    /// 两段之间间隔过大时不合并请求，只下载 sidx
+    private static let maxMergeGap = 64 * 1024
+
+    init?(segmentBase: VideoPlayURLInfo.DashInfo.DashSegmentBase) {
+        guard let indexRange = Self.parse(segmentBase.index_range) else { return nil }
+        self.indexRange = indexRange
+        let initRange = Self.parse(segmentBase.initialization)
+        if let initRange, initRange.upperBound < indexRange.lowerBound,
+           indexRange.lowerBound - initRange.upperBound <= Self.maxMergeGap
+        {
+            self.initRange = initRange
+            requestRange = initRange.lowerBound...indexRange.upperBound
+        } else {
+            self.initRange = nil
+            requestRange = indexRange
+        }
+    }
+
+    func indexData(in response: Data) -> Data? {
+        slice(indexRange, of: response)
+    }
+
+    func initData(in response: Data) -> Data? {
+        initRange.flatMap { slice($0, of: response) }
+    }
+
+    private func slice(_ range: ClosedRange<Int>, of response: Data) -> Data? {
+        let lower = range.lowerBound - requestRange.lowerBound
+        let upper = range.upperBound - requestRange.lowerBound
+        guard lower >= 0, upper < response.count else { return nil }
+        let start = response.startIndex
+        // 重新生成从 0 开始索引的 Data，SidxParseUtil 按绝对下标读取
+        return Data(response[(start + lower)...(start + upper)])
+    }
+
+    private static func parse(_ string: String) -> ClosedRange<Int>? {
+        let parts = string.split(separator: "-")
+        guard parts.count == 2, let lower = Int(parts[0]), let upper = Int(parts[1]), lower <= upper else {
+            return nil
+        }
+        return lower...upper
+    }
+}
+
+/// HDR 格式探测的最长等待时间，超时后按接口字段推断格式，不阻塞起播
+private let formatProbeTimeout: TimeInterval = 3
+
+/// 等待 operation 的结果，超过 seconds 秒返回 nil。
+/// 超时后 operation 仍会在后台执行完毕（SidxDownloader 会缓存结果供后续复用）
+private func withDeadline<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async -> T?) async -> T? {
+    await withCheckedContinuation { continuation in
+        let once = ResumeOnce<T?>(continuation)
+        let timer = Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            once.resume(nil)
+        }
+        Task {
+            let value = await operation()
+            once.resume(value)
+            timer.cancel()
+        }
+    }
+}
+
+private final class ResumeOnce<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Never>?
+
+    init(_ continuation: CheckedContinuation<T, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ value: T) {
+        lock.lock()
+        let continuation = continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: value)
     }
 }

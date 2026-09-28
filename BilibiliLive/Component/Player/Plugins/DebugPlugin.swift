@@ -474,6 +474,23 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
             return nil
         }
         
+        // 优先使用生成播放列表时确定的动态范围（vr = SDR/PQ/HLG，dv = 杜比视界 Profile）
+        if let range = queryItems.first(where: { $0.name == "vr" })?.value {
+            let source = queryItems.contains(where: { $0.name == "probed" }) ? "" : " (inferred)"
+            let display = AVPlayer.eligibleForHDRPlayback ? "" : " · display SDR only"
+            if let profile = queryItems.first(where: { $0.name == "dv" })?.value {
+                return "🎆 Dynamic Range: Dolby Vision \(profile) (\(range))\(source)\(display)"
+            }
+            switch range {
+            case "PQ":
+                return "✨ Dynamic Range: HDR10 (PQ)\(source)\(display)"
+            case "HLG":
+                return "🌟 Dynamic Range: HLG\(source)\(display)"
+            default:
+                return "☀️ Dynamic Range: SDR\(source)"
+            }
+        }
+
         guard let codecParam = queryItems.first(where: { $0.name == "codec" })?.value else {
             return nil
         }

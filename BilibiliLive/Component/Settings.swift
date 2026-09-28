@@ -258,6 +258,7 @@ extension DanmuArea {
 enum MediaQualityEnum: Codable, CaseIterable {
     case quality_1080p
     case quality_2160p
+    case quality_hdr
     case quality_hdr_dolby
 }
 
@@ -268,6 +269,8 @@ extension MediaQualityEnum {
             return "1080p"
         case .quality_2160p:
             return "4K"
+        case .quality_hdr:
+            return "HDR真彩"
         case .quality_hdr_dolby:
             return "杜比视界"
         }
@@ -279,19 +282,38 @@ extension MediaQualityEnum {
             return 116
         case .quality_2160p:
             return 120
+        case .quality_hdr:
+            return 125
         case .quality_hdr_dolby:
             return 126
         }
     }
 
+    /// playurl 接口的 fnval 标志位
+    private enum Fnval {
+        static let dash = 16
+        static let hdr = 64
+        static let fourK = 128
+        static let dolbyAudio = 256
+        static let dolbyVision = 512
+    }
+
     var fnval: Int {
+        var value: Int
         switch self {
         case .quality_1080p:
-            return 16
+            value = Fnval.dash
         case .quality_2160p:
-            return 144
+            value = Fnval.dash | Fnval.fourK
+        case .quality_hdr:
+            value = Fnval.dash | Fnval.fourK | Fnval.hdr
         case .quality_hdr_dolby:
-            return 976
+            value = Fnval.dash | Fnval.fourK | Fnval.hdr | Fnval.dolbyAudio | Fnval.dolbyVision
         }
+        // 开启无损音频和杜比全景声时，所有画质都请求杜比音轨
+        if Settings.losslessAudio {
+            value |= Fnval.dolbyAudio
+        }
+        return value
     }
 }
