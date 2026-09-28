@@ -25,32 +25,3 @@ public func getblurEffectView(style: UIBlurEffect.Style? = .light) -> UIVisualEf
 
     return headView
 }
-
-/// 同心圆算法计算圆角
-/// - Parameters:
-///   - parentRadius: 父view的圆角
-///   - inset: 内缩像素
-/// - Returns: 内缩后的圆角
-func concentricCornerRadius(parentRadius: CGFloat, inset: CGFloat) -> CGFloat {
-    return sqrt(parentRadius * parentRadius - 2 * parentRadius * inset + inset * inset)
-}
-
-
-/// 序列动画
-/// - Parameters:
-///   - animations: codes
-///   - delay: 时间
-func animateSequentially(_ steps: [() -> Void], delay: TimeInterval = 0.15) {
-    for (i, step) in steps.enumerated() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay * Double(i)) {
-            UIView.animate(withDuration: 0.6,
-                           delay: 0,
-                           usingSpringWithDamping: 0.7,
-                           initialSpringVelocity: 0.6,
-                           options: [.curveEaseOut],
-                           animations: {
-                               step()
-                           })
-        }
-    }
-}

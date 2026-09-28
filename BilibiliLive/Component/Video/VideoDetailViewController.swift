@@ -90,14 +90,6 @@ class VideoDetailViewController: UIViewController {
     @IBOutlet var noteView: NoteDetailView!
     @IBOutlet var noteViewHeight: NSLayoutConstraint!
 
-    @IBOutlet var videoDetalBgImageView: UIImageView! {
-        didSet {
-//            videoDetalBgImageView.alpha = 0.6
-        }
-    }
-
-    @IBOutlet var timeView: UIView!
-
     @IBOutlet var actionButtonSpaceView: UIView!
     @IBOutlet var durationLabel: UILabel!
     @IBOutlet var playCountLabel: UILabel!
@@ -109,7 +101,6 @@ class VideoDetailViewController: UIViewController {
     @IBOutlet var pageCollectionView: UICollectionView!
     @IBOutlet var recommandCollectionView: UICollectionView!
     @IBOutlet var replysCollectionView: UICollectionView!
-    @IBOutlet var repliesCollectionViewHeightConstraints: NSLayoutConstraint!
     @IBOutlet var ugcCollectionView: UICollectionView!
 
     @IBOutlet var pageView: UIView!
@@ -130,35 +121,18 @@ class VideoDetailViewController: UIViewController {
         }
     }
 
-    @IBOutlet var playBgStackView: UIView! {
-        didSet {
-            if #available(tvOS 26.0, *) {
-                playBgStackView.isHidden = true
-            }
-//            playBgStackView.setAutoGlassEffectView()
-//            playBgStackView.setCornerRadius(cornerRadius: lessBigSornerRadius, shadowColor: UIColor(hex: 0x0D0D0D0D))
-        }
-    }
-
     @IBOutlet var infoVisualEffectView: UIVisualEffectView! {
         didSet {
             infoVisualEffectView.layer.cornerRadius = infoEffectViewCornerRadius
-            if #available(tvOS 26.0, *) {
-                // Use premium Liquid Glass with subtle tint
-                infoVisualEffectView.effect = UIGlassEffect(style: .clear)
-                infoVisualEffectView.contentView.backgroundColor = UIColor.glassNeutralTint
-            } else {
-                // Fallback blur for tvOS 18-25 and below
-                infoVisualEffectView.effect = UIBlurEffect(style: .dark)
-            }
+            // Use premium Liquid Glass with subtle tint
+            infoVisualEffectView.effect = UIGlassEffect(style: .clear)
+            infoVisualEffectView.contentView.backgroundColor = UIColor.glassNeutralTint
         }
     }
 
     private var isBangumi = false
-    private var startTime = 0
     private var pages = [VideoPage]()
     private var replys: Replys?
-    private var subTitles: [SubtitleData]?
 
     private var allUgcEpisodes = [VideoDetail.Info.UgcSeason.UgcVideoInfo]()
 
@@ -233,7 +207,6 @@ class VideoDetailViewController: UIViewController {
         focusGuidePlay.preferredFocusEnvironments = [playButton]
 
         replysCollectionView.publisher(for: \.contentSize).sink { [weak self] _ in
-//            self?.repliesCollectionViewHeightConstraints.constant = newSize.height
             self?.view.setNeedsLayout()
         }.store(in: &subscriptions)
     }
@@ -241,33 +214,6 @@ class VideoDetailViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 
-//        animateSequentially([
-//            {
-//                self.playButton.alpha = 1
-//                self.playButton.transform = .identity
-//            },
-//
-//            {
-//                self.likeButton.alpha = 1
-//                self.likeButton.transform = .identity
-//            },
-//
-//            {
-//                self.coinButton.alpha = 1
-//                self.coinButton.transform = .identity
-//            },
-//
-//            {
-//                self.favButton.alpha = 1
-//                self.favButton.transform = .identity
-//            },
-//
-//            {
-//                self.dislikeButton.alpha = 1
-//                self.dislikeButton.transform = .identity
-//            },
-//        ])
-        
         // Enhanced spring animation with staggered timing for premium feel
         UIView.animate(
             withDuration: SpringParams.standard.duration,
@@ -315,11 +261,8 @@ class VideoDetailViewController: UIViewController {
     }
 
     private func toTopContent(isFocused: Bool) {
-//        BLAfter(afterTime: 0.1) {
         if isFocused {
-//            if scrollView.contentOffset.y > 20 {
             animateTopImage(isAnimateToTop: false)
-//            }
         }
     }
 
@@ -482,16 +425,13 @@ class VideoDetailViewController: UIViewController {
         upButton.title = data.ownerName
         followButton.isOn = data.Card.following
 
-        avatarImageView.kf.setImage(with: data.avatar, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))), .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))), .cacheSerializer(FormatIndicatedCacheSerializer.png)])
+        avatarImageView.kf.setImage(with: data.avatar, options: .roundAvatar)
 
         coverImageView.kf.setImage(with: data.pic) { [weak self] result in
             guard let self = self else { return }
             if case .success(let imageResult) = result {
-                // Update ambient lighting based on cover image
+                // Update ambient lighting based on cover image（取色在后台完成）
                 self.ambientLightingView.updateLighting(from: imageResult.image, animated: true)
-                
-                // Apply smart glow to cover
-                self.coverImageView.applySmartGlow(from: imageResult.image, config: .medium)
             }
         }
         backgroundImageView.kf.setImage(with: data.pic)
@@ -726,18 +666,16 @@ extension VideoDetailViewController: UICollectionViewDelegate {
 
     private func animateTopImage(isAnimateToTop: Bool = false) {
         guard isCoveImageToToped != isAnimateToTop else { return }
-        if #available(tvOS 17.0, *) {
-            UIView.animate(springDuration: self.animateTime) {
-                if isAnimateToTop {
-                    self.coverImageViewTop.constant = -630
-                    self.topInfoViewHeight.constant = 420
-                } else {
-                    self.topInfoViewHeight.constant = 820
-                    self.coverImageViewTop.constant = 0
-                    scrollView.setContentOffset(.zero, animated: false)
-                }
-                self.view?.layoutIfNeeded()
+        UIView.animate(springDuration: animateTime) {
+            if isAnimateToTop {
+                self.coverImageViewTop.constant = -630
+                self.topInfoViewHeight.constant = 420
+            } else {
+                self.topInfoViewHeight.constant = 820
+                self.coverImageViewTop.constant = 0
+                self.scrollView.setContentOffset(.zero, animated: false)
             }
+            self.view?.layoutIfNeeded()
         }
         isCoveImageToToped = isAnimateToTop
     }
@@ -804,17 +742,8 @@ extension VideoDetailViewController: UICollectionViewDataSource {
     }
 }
 
-class BLCardView: TVCardView {
-//    override func didMoveToSuperview() {
-//        super.didMoveToSuperview()
-//        subviews.first?.subviews.first?.subviews.last?.subviews.first?.subviews.first?.layer.cornerRadius = littleSornerRadius
-//    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-//        contentView.setBlurEffectView(cornerRadius: lessBigSornerRadius)
-    }
-}
+/// storyboard 中使用的 TVCardView 子类
+class BLCardView: TVCardView {}
 
 extension VideoDetailViewController {
     func makePageCollectionViewLayout() -> UICollectionViewLayout {
@@ -855,6 +784,8 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
     let imageView = UIImageView()
     override func setup() {
         super.setup()
+        // 封面自带系统焦点阴影；且聚焦时标题跑马灯滚动，cell 级阴影会每帧离屏重算
+        usesFocusShadow = false
         contentView.addSubview(imageView)
         contentView.addSubview(titleLabel)
         imageView.snp.makeConstraints { make in
@@ -908,33 +839,6 @@ class RelatedVideoCell: BLMotionCollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         stopScroll()
-    }
-}
-
-class DetailLabel: UILabel {
-    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-        super.didUpdateFocus(in: context, with: coordinator)
-        coordinator.addCoordinatedAnimations {
-            if self.isFocused {
-                self.backgroundColor = .white
-            } else {
-                self.backgroundColor = .clear
-            }
-        }
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        isUserInteractionEnabled = true
-    }
-
-    override var canBecomeFocused: Bool {
-        return true
-    }
-
-    override func drawText(in rect: CGRect) {
-        let insets = UIEdgeInsets(top: 0, left: 5, bottom: 0, right: 5)
-        super.drawText(in: rect.inset(by: insets))
     }
 }
 
@@ -1000,13 +904,6 @@ class ContentDetailViewController: UIViewController {
     static func createDesp(content: String) -> ContentDetailViewController {
         let vc = ContentDetailViewController()
         vc.titleLabel.text = "简介"
-        vc.contentTextView.text = content
-        return vc
-    }
-
-    static func createReply(content: String) -> ContentDetailViewController {
-        let vc = ContentDetailViewController()
-        vc.titleLabel.text = "评论"
         vc.contentTextView.text = content
         return vc
     }

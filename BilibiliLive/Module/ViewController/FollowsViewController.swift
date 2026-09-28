@@ -15,7 +15,6 @@ class FollowsViewController: StandardVideoCollectionViewController<DynamicFeedDa
     override func setupCollectionView() {
         super.setupCollectionView()
         collectionVC.pageSize = 1
-        collectionVC.isShowCove = true
     }
 
     override func request(page: Int) async throws -> [DynamicFeedData] {

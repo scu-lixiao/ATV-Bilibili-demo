@@ -8,18 +8,6 @@
 
 import UIKit
 
-// MARK: - Glass Navigation Style Protocol
-
-/// Protocol for views that adopt glass navigation styling
-@MainActor
-protocol GlassNavigationStyle {
-    /// Applies the glass navigation style with optional configuration
-    func applyGlassNavigation(config: GlassLayerConfig)
-    
-    /// Animates glass intensity for focus changes
-    func animateGlassFocus(isFocused: Bool)
-}
-
 // MARK: - Glass Layer Configuration
 
 /// Configuration for multi-layer glass effects
@@ -30,7 +18,7 @@ struct GlassLayerConfig {
     let strokeEnabled: Bool
     let glowEnabled: Bool
     let shadowElevation: ShadowElevation
-    
+
     /// Preset for menu navigation items
     @MainActor
     static var menuItem: GlassLayerConfig {
@@ -43,20 +31,7 @@ struct GlassLayerConfig {
             shadowElevation: .level2
         )
     }
-    
-    /// Preset for main navigation container
-    @MainActor
-    static var mainContainer: GlassLayerConfig {
-        GlassLayerConfig(
-            cornerRadius: CornerRadiusToken.large.rawValue,
-            baseTint: .glassPinkTint,
-            focusedTint: .glassPinkTintDark,
-            strokeEnabled: false,
-            glowEnabled: true,
-            shadowElevation: .level3
-        )
-    }
-    
+
     /// Preset for sub-navigation headers
     @MainActor
     static var subNavigation: GlassLayerConfig {
@@ -71,201 +46,118 @@ struct GlassLayerConfig {
     }
 }
 
-// MARK: - Glass Navigation Helper
+// MARK: - Glass Panel View
 
-/// Helper class for applying advanced glass effects to navigation elements
+/// 导航类元素（菜单项、分区标题等）的玻璃背景。
+///
+/// - 玻璃视图只创建一次，焦点 / 显隐变化只更新 tint、描边、高光和阴影，
+///   不再像之前那样每次焦点变化都销毁并重建 `UIVisualEffectView`。
+/// - 玻璃、描边、阴影共用同一个圆角，避免描边圆角与玻璃圆角不一致。
+/// - 阴影使用 `shadowPath`，不需要离屏渲染；也不再对包含实时玻璃的视图开启光栅化。
+/// - 显隐通过设置 / 清空 `effect` 实现，在动画块中会呈现系统的玻璃浮现动画
+///   （对 `UIVisualEffectView` 改 alpha 或 isHidden 会让效果渲染异常或生硬跳变）。
 @MainActor
-class GlassNavigationHelper {
-    
-    /// Applies multi-layer glass effect with all enhancements
-    /// - Parameters:
-    ///   - view: Target view to apply glass effect
-    ///   - config: Glass layer configuration
-    ///   - isFocused: Whether the element is currently focused
-    static func applyMultiLayerGlass(
-        to view: UIView,
-        config: GlassLayerConfig,
-        isFocused: Bool = false
-    ) {
-        // 🚀 Performance: Only remove layers if necessary
-        if isFocused {
-            view.layer.sublayers?.removeAll(where: { $0.name == "glass-layer" })
-            view.subviews.filter { $0.tag == 9999 }.forEach { $0.removeFromSuperview() }
-        }
-        
-        if #available(tvOS 26.0, *) {
-            // Layer 1: Base glass effect
-            applyBaseGlass(to: view, config: config, isFocused: isFocused)
-            
-            // Layer 2: Glossy highlight overlay (top portion) - only when focused
-            if isFocused && config.glowEnabled {
-                applyGlossyHighlight(to: view, config: config)
-            }
-            
-            // Layer 3: Stroke border
-            if config.strokeEnabled {
-                applyGlassStroke(to: view, config: config, isFocused: isFocused)
-            }
-            
-            // Layer 4: Inner glow (focused state) - only when focused
-            if config.glowEnabled && isFocused {
-                applyInnerGlow(to: view, config: config)
-            }
-            
-            // Shadow enhancement
-            view.applyPremiumShadow(
-                elevation: isFocused ? .focused : config.shadowElevation,
-                glowColor: isFocused ? .pinkGlowShadow : nil
-            )
-        } else {
-            // Fallback for older tvOS versions
-            view.applyBlurEffect(style: .extraDark, cornerRadius: config.cornerRadius)
-            if config.strokeEnabled {
-                view.layer.borderWidth = 0.5
-                view.layer.borderColor = UIColor.glassStrokeBorder.cgColor
-            }
+final class GlassPanelView: UIView {
+    var config: GlassLayerConfig {
+        didSet {
+            setNeedsLayout()
+            applyState()
         }
     }
-    
-    // MARK: - Private Layer Methods
-    
-    private static func applyBaseGlass(to view: UIView, config: GlassLayerConfig, isFocused: Bool) {
-        let tint = isFocused ? config.focusedTint : config.baseTint
-        view.applyLiquidGlass(
-            style: .clear,
-            tintColor: tint,
-            cornerRadius: config.cornerRadius,
-            interactive: false
-        )
+
+    private(set) var isGlassFocused = false
+    private(set) var isGlassVisible = true
+
+    private let effectView = UIVisualEffectView()
+    private let highlightLayer = CAGradientLayer()
+
+    init(config: GlassLayerConfig) {
+        self.config = config
+        super.init(frame: .zero)
+        setup()
     }
-    
-    private static func applyGlossyHighlight(to view: UIView, config: GlassLayerConfig) {
-        let highlightView = UIView()
-        highlightView.tag = 9999 // Mark for removal
-        highlightView.isUserInteractionEnabled = false
-        highlightView.layer.cornerRadius = config.cornerRadius
-        highlightView.clipsToBounds = true
-        
-        // Create gradient from white to transparent
-        let gradient = CAGradientLayer()
-        gradient.name = "glass-layer"
-        gradient.colors = [
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setup() {
+        isUserInteractionEnabled = false
+        layer.cornerCurve = .continuous
+
+        effectView.isUserInteractionEnabled = false
+        effectView.clipsToBounds = true
+        effectView.layer.cornerCurve = .continuous
+        addSubview(effectView)
+
+        // 顶部高光放在玻璃内部，自然被玻璃圆角裁剪
+        highlightLayer.colors = [
             UIColor.white.withAlphaComponent(0.25).cgColor,
-            UIColor.white.withAlphaComponent(0.0).cgColor
+            UIColor.white.withAlphaComponent(0.0).cgColor,
         ]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 0.5)
-        gradient.frame = view.bounds
-        
-        highlightView.layer.addSublayer(gradient)
-        view.addSubview(highlightView)
-        highlightView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            highlightView.topAnchor.constraint(equalTo: view.topAnchor),
-            highlightView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            highlightView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            highlightView.heightAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.5)
-        ])
-    }
-    
-    private static func applyGlassStroke(to view: UIView, config: GlassLayerConfig, isFocused: Bool) {
-        let strokeWidth: CGFloat = isFocused ? 1.5 : 1.0
-        let strokeColor = isFocused ? UIColor.glassInnerGlow : UIColor.glassStrokeBorder
-        
-        view.layer.borderWidth = strokeWidth
-        view.layer.borderColor = strokeColor.cgColor
-    }
-    
-    private static func applyInnerGlow(to view: UIView, config: GlassLayerConfig) {
-        // Create a subtle inner shadow effect
-        let innerGlowLayer = CALayer()
-        innerGlowLayer.name = "glass-layer"
-        innerGlowLayer.frame = view.bounds
-        innerGlowLayer.cornerRadius = config.cornerRadius
-        innerGlowLayer.borderWidth = 2.0
-        innerGlowLayer.borderColor = UIColor.glassInnerGlow.cgColor
-        innerGlowLayer.shadowColor = UIColor.white.cgColor
-        innerGlowLayer.shadowOffset = .zero
-        innerGlowLayer.shadowRadius = 8.0
-        innerGlowLayer.shadowOpacity = 0.3
-        
-        view.layer.insertSublayer(innerGlowLayer, at: 0)
-    }
-    
-    // MARK: - Animation Helpers
-    
-    /// Animates glass transition between focused and unfocused states
-    /// - Parameters:
-    ///   - view: Target view
-    ///   - config: Glass configuration
-    ///   - isFocused: Target focus state
-    ///   - duration: Animation duration
-    static func animateGlassFocus(
-        view: UIView,
-        config: GlassLayerConfig,
-        isFocused: Bool,
-        duration: TimeInterval = AnimationDuration.fast.rawValue
-    ) {
-        // 🎯 Optimized animation with easeInOut curve
-        UIView.animate(
-            withDuration: duration,
-            delay: 0,
-            usingSpringWithDamping: 0.8,
-            initialSpringVelocity: 0.5,
-            options: [.allowUserInteraction, .beginFromCurrentState]
-        ) {
-            applyMultiLayerGlass(to: view, config: config, isFocused: isFocused)
-            view.layoutIfNeeded()
-        }
-    }
-    
-    /// Animates glass intensity change with spring physics
-    /// - Parameters:
-    ///   - view: Target view
-    ///   - config: Glass configuration
-    ///   - isFocused: Target focus state
-    static func animateGlassIntensitySpring(
-        view: UIView,
-        config: GlassLayerConfig,
-        isFocused: Bool
-    ) {
-        // 🎯 Enhanced spring animation parameters
-        let params = isFocused ? SpringParams.standard : SpringParams.subtle
-        
-        view.animateSpring(params) {
-            self.applyMultiLayerGlass(to: view, config: config, isFocused: isFocused)
-        }
-    }
-}
+        highlightLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
+        highlightLayer.endPoint = CGPoint(x: 0.5, y: 0.5)
+        highlightLayer.opacity = 0
+        effectView.contentView.layer.addSublayer(highlightLayer)
 
-// MARK: - UIView Extension for Convenient Access
-
-@MainActor
-extension UIView {
-    
-    /// Applies glass navigation style with preset configuration
-    func applyGlassNavigationStyle(
-        preset: GlassLayerConfig? = nil,
-        isFocused: Bool = false
-    ) {
-        let config = preset ?? .menuItem
-        GlassNavigationHelper.applyMultiLayerGlass(
-            to: self,
-            config: config,
-            isFocused: isFocused
-        )
+        applyState()
     }
-    
-    /// Animates glass focus transition
-    func animateGlassNavigationFocus(
-        preset: GlassLayerConfig? = nil,
-        isFocused: Bool
-    ) {
-        let config = preset ?? .menuItem
-        GlassNavigationHelper.animateGlassFocus(
-            view: self,
-            config: config,
-            isFocused: isFocused
-        )
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let radius = min(config.cornerRadius, bounds.height / 2)
+        layer.cornerRadius = radius
+        effectView.frame = bounds
+        effectView.layer.cornerRadius = radius
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        highlightLayer.frame = effectView.contentView.bounds
+        CATransaction.commit()
+    }
+
+    func setFocused(_ focused: Bool) {
+        guard focused != isGlassFocused else { return }
+        isGlassFocused = focused
+        applyState()
+    }
+
+    func setGlassVisible(_ visible: Bool) {
+        guard visible != isGlassVisible else { return }
+        isGlassVisible = visible
+        applyState()
+    }
+
+    private func applyState() {
+        let focused = isGlassFocused
+        let visible = isGlassVisible
+
+        if visible {
+            if effectView.effect == nil {
+                effectView.effect = UIGlassEffect(style: .clear)
+            }
+            effectView.contentView.backgroundColor = focused ? config.focusedTint : config.baseTint
+        } else {
+            effectView.effect = nil
+            effectView.contentView.backgroundColor = .clear
+        }
+
+        highlightLayer.opacity = visible && focused && config.glowEnabled ? 1 : 0
+
+        // 聚焦时的描边同时承担了原来 "inner glow" 图层的作用
+        if visible && config.strokeEnabled {
+            layer.borderWidth = focused ? 1.5 : 1.0
+            layer.borderColor = (focused ? UIColor.glassInnerGlow : UIColor.glassStrokeBorder).cgColor
+        } else {
+            layer.borderWidth = 0
+        }
+
+        let elevation: ShadowElevation = focused ? .focused : config.shadowElevation
+        layer.shadowColor = (focused ? UIColor.pinkGlowShadow : UIColor.deepShadow).cgColor
+        layer.shadowOffset = elevation.offset
+        layer.shadowRadius = elevation.radius
+        layer.shadowOpacity = visible ? elevation.opacity : 0
     }
 }

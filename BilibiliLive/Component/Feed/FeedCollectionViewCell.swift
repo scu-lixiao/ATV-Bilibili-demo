@@ -7,6 +7,7 @@
 
 import Kingfisher
 import MarqueeLabel
+import SnapKit
 import TVUIKit
 import UIKit
 
@@ -18,23 +19,22 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
     private let upLabel = UILabel()
     private let sortLabel = UILabel()
     private let imageView = UIImageView()
-    private let imageViewParallax = UIImageView()
     let infoView = UIView()
     private let avatarView = UIImageView()
+    private var avatarHeightConstraint: Constraint?
     private var oldStyle: FeedDisplayStyle?
 
-    deinit {
-        print("🧹 FeedCollectionViewCell deinitialized")
-    }
-    
+    private static let infoAlphaNormal: CGFloat = 0.8
+
     override func setup() {
         super.setup()
+        // 封面使用 adjustsImageWhenAncestorFocused，系统焦点效果自带阴影，
+        // cell 自己再叠一层无 shadowPath 的阴影只会带来每帧离屏渲染
+        usesFocusShadow = false
+
         let longpress = UILongPressGestureRecognizer(target: self, action: #selector(actionLongPress(sender:)))
         addGestureRecognizer(longpress)
 
-        // Tag for parallax effect
-        contentView.tag = 999
-        
         contentView.addSubview(imageView)
         imageView.snp.makeConstraints { make in
             make.leading.equalToSuperview()
@@ -42,37 +42,16 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
             make.top.equalToSuperview()
             make.height.equalTo(imageView.snp.width).multipliedBy(9.0 / 16)
         }
-        
-//        contentView.addSubview(imageViewParallax)
-//        imageViewParallax.snp.makeConstraints { make in
-//            make.leading.equalToSuperview()
-//            make.trailing.equalToSuperview()
-//            make.top.equalToSuperview()
-//            make.height.equalTo(imageViewParallax.snp.width).multipliedBy(9.0 / 16)
-//        }
-//        
-//        imageViewParallax.image = UIImage(named: "cover")
-//        imageViewParallax.backgroundColor = .red
-        
-        imageView.adjustsImageWhenAncestorFocused = true
-        let style = styleOverride ?? Settings.displayStyle
 
-        // Apply corner radius based on display style to ensure consistency across simulator and device
-        switch style {
-        case .big, .large:
-            imageView.layer.cornerRadius = lessBigSornerRadius
-        case .normal, .sideBar:
-            imageView.layer.cornerRadius = normailSornerRadius
-        }
+        imageView.adjustsImageWhenAncestorFocused = true
+        // 圆角和头像尺寸依赖 styleOverride，而 styleOverride 在 setup 之后才被赋值，统一放到 updateStyle 里处理
         imageView.layer.cornerCurve = .continuous
         imageView.layer.masksToBounds = true
-        imageView.layer.shouldRasterize = true
-        imageView.layer.rasterizationScale = UIScreen.main.scale
         imageView.contentMode = .scaleAspectFill
 
         imageView.addSubview(avatarView)
 
-        infoView.alpha = 0.8
+        infoView.alpha = Self.infoAlphaNormal
         contentView.addSubview(infoView)
         infoView.snp.makeConstraints { make in
             make.leading.trailing.bottom.equalToSuperview()
@@ -97,11 +76,10 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         hStackView.spacing = 10
         avatarView.backgroundColor = .clear
 
-        let aHeight: CGFloat = style == .large ? 44 : 33
         avatarView.snp.makeConstraints { make in
             make.bottom.right.equalToSuperview().offset(-4)
             make.width.equalTo(avatarView.snp.height)
-            make.height.equalTo(aHeight)
+            avatarHeightConstraint = make.height.equalTo(33).constraint
         }
         stackView.setContentHuggingPriority(.required, for: .vertical)
         avatarView.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -123,12 +101,15 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         upLabel.setContentHuggingPriority(.required, for: .vertical)
         upLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         upLabel.textColor = UIColor(named: "upTitleColor")
+        // 0.1 会把较长的 "UP主 · 日期" 缩到几乎看不清，超出部分改为截断
         upLabel.adjustsFontSizeToFitWidth = true
-        upLabel.minimumScaleFactor = 0.1
+        upLabel.minimumScaleFactor = 0.8
+        upLabel.lineBreakMode = .byTruncatingTail
+        updateStyle()
     }
-   
 
     func setup(data: any DisplayData, indexPath: IndexPath? = nil) {
+        updateStyle()
         titleLabel.text = data.title
         if let index = indexPath, index.row <= 98 {
             sortLabel.isHidden = false
@@ -143,32 +124,38 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
             if pic.scheme == nil {
                 pic = URL(string: "http:\(pic.absoluteString)")!
             }
-            imageView.kf.setImage(with: pic, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 720, height: 404))), .cacheOriginalImage]) { [weak self] result in
-                guard let self = self else { return }
-                // Apply smart glow based on image content after loading
-                if case .success(let imageResult) = result {
-                    self.imageView.applySmartGlow(from: imageResult.image, config: .subtle)
-                }
-            }
+            // 按卡片实际尺寸 × 屏幕 scale 降采样：4K 下不再把 720px 的图拉伸到 1000+px 显示发虚，
+            // 1080p 或小卡片下则比原先固定的 720px 更省内存
+            let width = bounds.width > 0 ? bounds.width : 720
+            imageView.kf.setImage(with: pic, options: [
+                .processor(DownsamplingImageProcessor(size: CGSize(width: width, height: width * 9 / 16))),
+                .scaleFactor(traitCollection.displayScale),
+                .cacheOriginalImage,
+            ])
         }
         if let avatar = data.avatar {
             avatarView.isHidden = false
-            avatarView.kf.setImage(with: avatar, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))), .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))), .cacheSerializer(FormatIndicatedCacheSerializer.png)])
+            avatarView.kf.setImage(with: avatar, options: .roundAvatar)
         } else {
             avatarView.isHidden = true
         }
-        updateStyle()
     }
 
     private func updateStyle() {
         let style = styleOverride ?? Settings.displayStyle
-        if oldStyle != style {
-            titleLabel.font = style.titleFont
-            upLabel.font = style.upFont
-            sortLabel.font = style.sortFont
-        }
-
+        guard oldStyle != style else { return }
         oldStyle = style
+
+        titleLabel.font = style.titleFont
+        upLabel.font = style.upFont
+        sortLabel.font = style.sortFont
+        switch style {
+        case .big, .large:
+            imageView.layer.cornerRadius = lessBigSornerRadius
+        case .normal, .sideBar:
+            imageView.layer.cornerRadius = normailSornerRadius
+        }
+        avatarHeightConstraint?.update(offset: style == .large ? 44 : 33)
     }
 
     @objc private func actionLongPress(sender: UILongPressGestureRecognizer) {
@@ -182,32 +169,13 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         avatarView.kf.cancelDownloadTask()
         onLongPress = nil
         avatarView.image = nil
-        
-        // Remove glow effects
-        imageView.removeGlow()
+        infoView.alpha = Self.infoAlphaNormal
     }
-    
+
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        
         coordinator.addCoordinatedAnimations {
-            if self.isFocused {
-                // Enhanced focus glow with smart color adaptation
-                self.imageView.applySmartFocusGlow(from: self.imageView.image, isFocused: true)
-                
-                // 🚀 Performance: Disable rasterization when focused (dynamic content)
-                self.imageView.layer.disableRasterization()
-            } else {
-                // Fade out glow
-                self.imageView.animateGlowIntensity(to: 0.3, duration: 0.3)
-                
-                // 🚀 Performance: Enable rasterization when unfocused (static content)
-                self.imageView.isStatic(timeout: 0.5) { [weak self] isStatic in
-                    if isStatic {
-                        self?.imageView.layer.enableSmartRasterization()
-                    }
-                }
-            }
+            self.infoView.alpha = self.isFocused ? 1 : Self.infoAlphaNormal
         }
     }
 }
@@ -252,17 +220,6 @@ extension FeedDisplayStyle {
             return 30
         case .large, .normal, .sideBar:
             return 20
-        }
-    }
-
-    var heightEstimated: CGFloat {
-        switch self {
-        case .big:
-            return 516
-        case .large:
-            return 516
-        case .normal, .sideBar:
-            return 380
         }
     }
 

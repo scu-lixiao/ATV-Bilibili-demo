@@ -128,11 +128,6 @@ enum Settings {
     static var danmuStrokeAlpha: DanmuStrokeAlpha
 }
 
-struct MediaQuality {
-    var qn: Int
-    var fnval: Int
-}
-
 enum SponsorBlockType: String, Codable, CaseIterable {
     case none
     case jump

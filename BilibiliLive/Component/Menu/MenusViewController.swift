@@ -27,29 +27,23 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     weak var currentViewController: UIViewController?
     private var menuIsShowing = false
     private var selectMenuItem: CellModel?
+    /// 菜单的玻璃层。展开 / 收起时圆角要和 menusView 的描边同步变化
+    private weak var menusGlassView: UIVisualEffectView?
 
     @IBOutlet var menusView: UIView! {
         didSet {
-            if #available(tvOS 26.0, *) {
-                // Use enhanced multi-layer glass with dark theme optimization
-                menusView.applyLiquidGlass(
-                    style: .clear,
-                    tintColor: UIColor.glassPinkTintDark,
-                    cornerRadius: lessBigSornerRadius,
-                    interactive: false
-                )
-                
-                // Add subtle stroke for definition
-                menusView.layer.borderWidth = 1.0
-                menusView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
-            } else if #available(tvOS 18.0, *) {
-                menusView.setGlassEffectView(style: .clear,
-                                             cornerRadius: lessBigSornerRadius,
-                                             tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
-            } else {
-                menusView.setBlurEffectView(cornerRadius: lessBigSornerRadius)
-                menusView.setCornerRadius(cornerRadius: lessBigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
-            }
+            // Use enhanced multi-layer glass with dark theme optimization
+            menusGlassView = menusView.applyLiquidGlass(
+                style: .clear,
+                tintColor: UIColor.glassPinkTintDark,
+                cornerRadius: lessBigSornerRadius,
+                interactive: false
+            )
+            menusView.layer.cornerCurve = .continuous
+
+            // Add subtle stroke for definition
+            menusView.layer.borderWidth = 1.0
+            menusView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
             menusView.alpha = 0
             menusView.removeFromSuperview()
         }
@@ -71,8 +65,6 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
     @IBOutlet var headingViewTop: NSLayoutConstraint!
 
     @IBOutlet var menuViewWidth: NSLayoutConstraint!
-
-    var focusableView = true
 
     var userName = ""
 
@@ -132,17 +124,10 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         }
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-    }
-
-    @objc func handleMenuPress() {
+    func handleMenuPress() {
         NotificationCenter.default.post(name: EVENT_COLLECTION_TO_TOP, object: nil)
     }
 
-    @objc func handleRightPress() {
-        hiddenMenus()
-    }
     func showMenus() {
         guard !menuIsShowing else { return }
 
@@ -150,50 +135,51 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
             self.view.setNeedsFocusUpdate()
             self.view.updateFocusIfNeeded()
 
-                        // Enhanced anticipation animation with smoother springs
-            UIView.animate(withDuration: AnimationDuration.fast.rawValue, delay: 0, options: [.curveEaseOut]) {
-                self.menusView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
-            } completion: { _ in
-                // Use premium spring parameters for smooth expansion
-                self.menusView.animateSpring(.standard) {
-                    // 渐变显示子元素
-                    self.leftCollectionView.alpha = 1
-                    self.homeIcon.alpha = 0
+            // 直接弹簧展开。原先先用 0.3s 把菜单缩到 0.95 再展开，按下遥控器后约 0.4s 才开始有反馈
+            self.menusView.animateSpring(.standard) {
+                // 渐变显示子元素
+                self.leftCollectionView.alpha = 1
+                self.homeIcon.alpha = 0
 
-                    // 调整布局常量
-                    self.collectionTop.constant = 40
-                    self.menusViewHeight.constant = 1020
-                    self.headViewLeading.constant = 20
-                    self.headingViewTop.constant = 20
-                    self.menuViewWidth.constant = 320
-                    self.menusView.setCornerRadius(cornerRadius: bigSornerRadius)
+                // 调整布局常量
+                self.collectionTop.constant = 40
+                self.menusViewHeight.constant = 1020
+                self.headViewLeading.constant = 20
+                self.headingViewTop.constant = 20
+                self.menuViewWidth.constant = 320
+                self.setMenusCornerRadius(bigSornerRadius)
 
-                    // Premium shadow with enhanced depth
-                    self.menusView.applyPremiumShadow(elevation: .level3, glowColor: .pinkGlowShadow)
-                    self.menusView.transform = .identity
-                    
-                    // Update ambient glow for expanded state
-                    self.updateAmbientGlow(isExpanded: true)
+                // Premium shadow with enhanced depth
+                self.menusView.applyPremiumShadow(elevation: .level3, glowColor: .pinkGlowShadow)
 
-                    // label 动画
-                    UIView.transition(with: self.usernameLabel,
-                                      duration: AnimationDuration.standard.rawValue,
-                                      options: [.transitionCrossDissolve]) {
-                        self.usernameLabel.text = self.userName
-                    }
-                    self.usernameLabel.transform = CGAffineTransform(scaleX: 1.01, y: 1.01)
-                    self.usernameLabel.alpha = 0.6
-                    self.view.layoutIfNeeded()
-                } completion: { _ in
-                    // Smooth follow-through
-                    UIView.animate(withDuration: AnimationDuration.standard.rawValue) {
-                        self.usernameLabel.transform = .identity
-                        self.usernameLabel.alpha = 1
-                    }
-                    self.menuIsShowing = true
+                // Update ambient glow for expanded state
+                self.updateAmbientGlow(isExpanded: true)
+
+                // label 动画
+                UIView.transition(with: self.usernameLabel,
+                                  duration: AnimationDuration.standard.rawValue,
+                                  options: [.transitionCrossDissolve]) {
+                    self.usernameLabel.text = self.userName
                 }
+                self.usernameLabel.transform = CGAffineTransform(scaleX: 1.01, y: 1.01)
+                self.usernameLabel.alpha = 0.6
+                self.view.layoutIfNeeded()
+            } completion: { _ in
+                // Smooth follow-through
+                UIView.animate(withDuration: AnimationDuration.standard.rawValue) {
+                    self.usernameLabel.transform = .identity
+                    self.usernameLabel.alpha = 1
+                }
+                self.menuIsShowing = true
             }
         }
+    }
+
+    /// 同时更新描边（menusView.layer）和玻璃层的圆角。
+    /// 原先只改了 menusView 的圆角，玻璃层固定为 35，展开后描边和玻璃的圆角对不上
+    private func setMenusCornerRadius(_ radius: CGFloat) {
+        menusView.layer.cornerRadius = radius
+        menusGlassView?.layer.cornerRadius = radius
     }
     
     func hiddenMenus(isHiddenSubView: Bool = false) {
@@ -208,7 +194,7 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
             self.headViewLeading.constant = 5
             self.headingViewTop.constant = 5
             self.menuViewWidth.constant = 180
-            self.menusView.setCornerRadius(cornerRadius: 30)
+            self.setMenusCornerRadius(30)
 
             // Reduced shadow in collapsed state
             self.menusView.applyPremiumShadow(elevation: .level1)
@@ -355,11 +341,6 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         }
     }
     
-    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        // pressesCancelled 也要正确传递给 super
-        super.pressesCancelled(presses, with: event)
-    }
-    
     // MARK: - Enhanced Visual Effects
     
     /// Adds ambient glow effect behind menu for enhanced depth perception
@@ -412,19 +393,11 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         if let glowLayer = view.layer.sublayers?.first(where: { $0.name == "ambient-glow" }) as? CAGradientLayer {
             glowLayer.opacity = 0.3
         }
-        
-        // Disable shadow rasterization temporarily
-        menusView.layer.shouldRasterize = false
-        
-        // Re-enable after a delay
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
             guard let self = self else { return }
             if let glowLayer = self.view.layer.sublayers?.first(where: { $0.name == "ambient-glow" }) as? CAGradientLayer {
                 glowLayer.opacity = self.menuIsShowing ? 1.0 : 0.5
-            }
-            self.menusView.layer.shouldRasterize = true
-            if let window = self.view.window {
-                self.menusView.layer.rasterizationScale = window.screen.scale
             }
         }
     }

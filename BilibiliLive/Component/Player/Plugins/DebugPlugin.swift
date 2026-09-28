@@ -280,12 +280,10 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         }
         
         // Get estimated data rate if available
-        if #available(tvOS 14.0, *) {
-            let estimatedDataRate = videoTrack.estimatedDataRate
-            if estimatedDataRate > 0 {
-                let mbps = estimatedDataRate / 1_000_000
-                formatInfo.append("💾 Track Bitrate: \(String(format: "%.2f", mbps))Mbps")
-            }
+        let estimatedDataRate = videoTrack.estimatedDataRate
+        if estimatedDataRate > 0 {
+            let mbps = estimatedDataRate / 1_000_000
+            formatInfo.append("💾 Track Bitrate: \(String(format: "%.2f", mbps))Mbps")
         }
         
         return formatInfo.joined(separator: "\n")

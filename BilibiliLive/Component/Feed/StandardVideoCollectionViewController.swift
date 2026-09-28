@@ -20,8 +20,6 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
     var reloading = false
     private var page = 0
 
-    var backMenuAction: (() -> Void)?
-    var didUpdateFocus: (() -> Void)?
     var didSelectToLastLeft: (() -> Void)?
     var isShowTopCover: (() -> Bool)?
     var isNeedFocusToMenu: (() -> Bool)?
@@ -47,8 +45,6 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
         reloadData()
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        collectionVC.backMenuAction = backMenuAction
-        collectionVC.didUpdateFocus = didUpdateFocus
         collectionVC.didSelectToLastLeft = didSelectToLastLeft
         
         BLAfter(afterTime: 5) {
@@ -115,8 +111,7 @@ class StandardVideoCollectionViewController<T: PlayableData>: UIViewController, 
         page = 1
         do {
             let res = try await request(page: 1)
-            collectionVC.displayDatas = []
-            collectionVC.appendData(displayData: res)
+            collectionVC.resetData(displayData: res)
         } catch let err {
             let alert = UIAlertController(title: "Error", message: "\(err)", preferredStyle: .alert)
             alert.addAction(.init(title: "Ok", style: .cancel))

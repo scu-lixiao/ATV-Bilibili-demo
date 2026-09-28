@@ -10,7 +10,6 @@ import UIKit
 class HotViewController: StandardVideoCollectionViewController<VideoDetail.Info> {
     override func setupCollectionView() {
         super.setupCollectionView()
-        collectionVC.isShowCove = true
     }
 
     override func request(page: Int) async throws -> [VideoDetail.Info] {

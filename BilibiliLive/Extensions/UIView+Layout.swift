@@ -57,50 +57,6 @@ extension UIView {
         sendSubviewToBack(eView)
     }
 
-    func setAutoGlassEffectView(
-        cornerRadius: CGFloat? = 0,
-        cornerMask: CACornerMask? = nil
-    ) {
-        if #available(tvOS 26.0, *) {
-            let glassEffect = UIGlassEffect(style: .clear)
-            let effectView = UIVisualEffectView()
-            self.insertSubview(effectView, at: 0)
-            if let v = cornerRadius {
-                effectView.cornerConfiguration = .corners(radius: .fixed(v))
-            }
-            effectView.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
-            }
-
-            effectView.effect = glassEffect
-
-        } else {
-            setBlurEffectView(cornerRadius: cornerRadius, cornerMask: cornerMask)
-        }
-    }
-
-    @available(tvOS 26.0, *)
-    func setGlassEffectView(style: UIGlassEffect.Style,
-                            cornerRadius: CGFloat? = 0,
-                            cornerMask: CACornerMask? = nil,
-                            tintColor: UIColor? = nil) {
-        //            self.backgroundColor = .clear
-        let glassEffect = UIGlassEffect(style: style)
-        if tintColor != nil{
-            glassEffect.tintColor = tintColor
-        }
-        let effectView = UIVisualEffectView()
-        insertSubview(effectView, at: 0)
-        if let v = cornerRadius {
-            effectView.cornerConfiguration = .corners(radius: .fixed(v))
-        }
-        effectView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-
-        effectView.effect = glassEffect
-    }
-
     /// 设置圆角边框
     /// - Parameters:
     ///   - view: 需要设置的view
@@ -160,7 +116,6 @@ extension UIView {
                 self.superview?.insertSubview(shadowView, belowSubview: self)
                 if shadowView.superview != nil {
                     shadowView.snp.makeConstraints { make in
-//                        make.edges.equalTo(self)
                         make.top.left.equalTo(self).offset(1)
                         make.right.bottom.equalTo(self).offset(-1)
                     }
@@ -185,22 +140,6 @@ extension UIView {
                 })
             }
         }
-    }
-
-    /// 设置阴影参数
-    /// - Parameters:
-    ///   - color: 对应 Sketch 阴影 "颜色"
-    ///   - shadowOpacity: 透明度
-    ///   - shadowRadius: 陰影的半徑
-    ///   - offset: 对应 Sketch 阴影 "偏移" x y, CGSize(width: x, height: y)
-    func addShadow(shadowColor: UIColor = .black,
-                   shadowOpacity: CGFloat = 1,
-                   shadowRadius: CGFloat = 12,
-                   shadowOffset: CGSize = CGSize(width: 2, height: 12)) {
-        layer.shadowColor = shadowColor.cgColor
-        layer.shadowOffset = shadowOffset
-        layer.shadowRadius = shadowRadius
-        layer.shadowOpacity = Float(shadowOpacity)
     }
 }
 

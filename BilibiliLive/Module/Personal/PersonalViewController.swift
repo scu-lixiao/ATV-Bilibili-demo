@@ -52,25 +52,17 @@ class PersonalViewController: UIViewController, BLTabBarContentVCProtocol {
         collectionView(leftCollectionView, didSelectItemAt: IndexPath(row: 0, section: 0))
         
         // Apply Premium visual effects with dark theme enhancement
-        if #available(tvOS 26.0, *) {
-            menusView.applyLiquidGlass(
-                style: .clear,
-                tintColor: UIColor.glassPinkTintDark,
-                cornerRadius: bigSornerRadius,
-                interactive: false
-            )
-            
-            // Add glass stroke for definition
-            menusView.applyGlassStroke(width: 1.0)
-        } else if #available(tvOS 18.0, *) {
-            menusView.setGlassEffectView(style: .clear,
-                                         cornerRadius: bigSornerRadius,
-                                         tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
-        } else {
-            menusView.setBlurEffectView(cornerRadius: bigSornerRadius)
-            menusView.setCornerRadius(cornerRadius: bigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
-        }
-        
+        menusView.applyLiquidGlass(
+            style: .clear,
+            tintColor: UIColor.glassPinkTintDark,
+            cornerRadius: bigSornerRadius,
+            interactive: false
+        )
+        // 描边画在 menusView.layer 上，圆角需与玻璃一致（原先是直角描边套圆角玻璃）
+        menusView.layer.cornerRadius = bigSornerRadius
+        menusView.layer.cornerCurve = .continuous
+        menusView.applyGlassStroke(width: 1.0)
+
         // Add Premium shadow with enhanced depth
         menusView.applyPremiumShadow(elevation: .level2, glowColor: .pinkGlowShadow)
         
@@ -85,23 +77,6 @@ class PersonalViewController: UIViewController, BLTabBarContentVCProtocol {
         }
         menusLeft.constant = 40
     }
-
-//    override func viewWillAppear(_ animated: Bool) {
-//        super.viewWillAppear(animated)
-//
-//        BLAnimate(withDuration: 0.3) {
-//            self.menusLeft.constant = 40
-//            self.view.layoutIfNeeded()
-//        }
-//    }
-//
-//    override func viewWillDisappear(_ animated: Bool) {
-//        super.viewWillDisappear(animated)
-//        BLAnimate(withDuration: 0.3) {
-//            self.menusLeft.constant = -300
-//            self.view.layoutIfNeeded()
-//        }
-//    }
 
     func setupData() {
         let setting = CellModel(title: "设置", contentVC: SettingsViewController())
@@ -195,15 +170,5 @@ extension PersonalViewController: UICollectionViewDelegate {
             setViewController(vc: vc)
         }
         model.action?()
-    }
-}
-
-class EmptyViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        let label = UILabel()
-        label.text = "Nothing Here"
-        view.addSubview(label)
-        label.makeConstraintsBindToCenterOfSuperview()
     }
 }

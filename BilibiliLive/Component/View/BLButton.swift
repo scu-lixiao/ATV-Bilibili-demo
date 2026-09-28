@@ -85,27 +85,13 @@ class BLCustomButton: BLButton {
 
     private func updateButton() {
         action?(isFocused)
+        // 深浅色模式下表现一致：聚焦为白底黑图标，未聚焦为白色图标
         if isFocused {
-            if UITraitCollection.current.userInterfaceStyle == .dark {
-                print("当前是暗黑模式 🌙")
-                imageView.image = highLightImage ?? getImage()
-                imageView.tintColor = .black
-            } else {
-                print("当前是浅色模式 ☀️")
-                imageView.image = highLightImage ?? getImage()
-                imageView.tintColor = .black
-            }
-
+            imageView.image = highLightImage ?? getImage()
+            imageView.tintColor = .black
         } else {
-            if UITraitCollection.current.userInterfaceStyle == .dark {
-                print("当前是暗黑模式 🌙")
-                imageView.image = getImage()
-                imageView.tintColor = .white
-            } else {
-                print("当前是浅色模式 ☀️")
-                imageView.image = getImage()
-                imageView.tintColor = .white
-            }
+            imageView.image = getImage()
+            imageView.tintColor = .white
         }
     }
 
@@ -147,25 +133,13 @@ class BLCustomTextButton: BLButton {
         }
         titleLabel.text = title
         titleLabel.font = titleFont
-        if UITraitCollection.current.userInterfaceStyle == .dark {
-            print("当前是暗黑模式 🌙")
-            titleLabel.textColor = titleColor
-        } else {
-            print("当前是浅色模式 ☀️")
-            titleLabel.textColor = titleColor
-        }
+        titleLabel.textColor = titleColor
         titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        if UITraitCollection.current.userInterfaceStyle == .dark {
-            print("当前是暗黑模式 🌙")
-            titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
-        } else {
-            print("当前是浅色模式 ☀️")
-            titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
-        }
+        titleLabel.textColor = isFocused ? titleSelectedColor : titleColor
     }
 }
 
@@ -194,16 +168,7 @@ class BLButton: UIControl {
     override var canBecomeFocused: Bool { return true }
 
     func setup() {
-        
-        // Use Liquid Glass for tvOS 26+ with proper version check
-        if #available(tvOS 26.0, *) {
-            let glassEffect = UIGlassEffect(style: .clear)
-            effectView.effect = glassEffect
-        } else {
-            // Enhanced blur for tvOS 18-25 and below
-            effectView.effect = UIBlurEffect(style: .dark)
-        }
-        
+        effectView.effect = UIGlassEffect(style: .clear)
         isUserInteractionEnabled = true
         motionEffect = UIInterpolatingMotionEffect(keyPath: "center.x", type: .tiltAlongHorizontalAxis)
         motionEffect.maximumRelativeValue = 2
@@ -213,12 +178,10 @@ class BLButton: UIControl {
         effectView.isUserInteractionEnabled = false
         effectView.clipsToBounds = true
         effectView.layer.cornerRadius = normailSornerRadius
+        effectView.layer.cornerCurve = .continuous
         effectView.snp.makeConstraints { make in
             make.top.leading.trailing.equalToSuperview()
             make.bottom.equalToSuperview().priority(.high)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.effectView.layer.cornerRadius = self.getCornerRadius()
         }
 
         effectView.contentView.addSubview(selectedWhiteView)
@@ -231,6 +194,15 @@ class BLButton: UIControl {
     
     private func getCornerRadius() -> CGFloat {
         return cornerRadius>0 ? cornerRadius : self.effectView.height / 2
+    }
+
+    // 原先在 setup 后 0.3s 用 asyncAfter 设置圆角：若届时还没完成布局，高度为 0，按钮会变成直角。
+    // 改为每次布局后同步圆角，并给阴影设置 shadowPath（只投射在玻璃按钮上，且无需离屏渲染）
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let radius = getCornerRadius()
+        effectView.layer.cornerRadius = radius
+        layer.shadowPath = UIBezierPath(roundedRect: effectView.frame, cornerRadius: radius).cgPath
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {

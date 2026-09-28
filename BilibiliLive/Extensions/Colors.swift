@@ -14,14 +14,6 @@ extension UIColor {
         let b = CGFloat(hex & 0x000000FF) / 255.0
         self.init(red: r, green: g, blue: b, alpha: alpha)
     }
-
-    static var biliblue: UIColor {
-        UIColor(hex: 0x00aeec)
-    }
-
-    static var bilipink: UIColor {
-        UIColor(hex: 0xff6699)
-    }
 }
 
 extension UIImageView {

@@ -5,14 +5,12 @@
 //  Created by yicheng on 2021/4/5.
 //
 
+import Kingfisher
 import SnapKit
 import SwiftUI
 import TVUIKit
 import UIKit
 
-let sornerRadius = 8.0
-let littleSornerRadius = 24.0
-let moreLittleSornerRadius = 18.0
 let normailSornerRadius = 25.0
 let lessBigSornerRadius = 35.0
 let bigSornerRadius = 45.0
@@ -55,8 +53,6 @@ class FeedCollectionViewController: UIViewController {
         case main
     }
 
-    private var coverViewIsShowing = false
-
     var styleOverride: FeedDisplayStyle?
     var didSelect: ((any DisplayData) -> Void)?
     var didLongPress: ((any DisplayData) -> Void)?
@@ -65,34 +61,36 @@ class FeedCollectionViewController: UIViewController {
     var pageSize = 20
     var showHeader: Bool = false  // 隐藏所有栏目的标题栏
     var headerText = ""
-    var coverViewHeight = 500.0
     let collectionEdgeInsetTop = 40.0
-    var isShowCove = false
-
-    var nextFocusedIndexPath: IndexPath?
 
     let bgImageView = UIImageView()
 
-    var backMenuAction: (() -> Void)?
-    var didUpdateFocus: (() -> Void)?
     var isShowTopCover: (() -> Bool)?
     var isToToped: ((_ isTop: Bool) -> Void)?
 
     var didSelectToLastLeft: (() -> Void)?
-    private var beforeSeleteIndex: IndexPath?
+
+    /// 顶部大图的三种布局状态。焦点在同一行内移动时状态不变，据此跳过重复的弹簧动画和整页 layout
+    private enum TopCoverState {
+        case expanded // 大图完整展示
+        case peek // 焦点在第一行，大图上移露出第一行
+        case collapsed // 焦点在第二行及以下，大图完全收起
+    }
+
+    private var topCoverState = TopCoverState.expanded
+    private var menuObserver: NSObjectProtocol?
     
     // 标志位：是否正在滚动到顶部（防止在滚动过程中立即调出导航栏）
     private var isScrollingToTop = false
 
     private let viewModel = BannerViewModel()
-    private var bannerSwiftUIView: BannerView?
     private var bannerUIView: UIView?
     private let animationOffSet = -200.0
     private let animateTime = 0.8
 
     var displayDatas: [any DisplayData] {
         set {
-            _displayData = newValue.map { AnyDispplayData(data: $0) }.uniqued()
+            replaceItems(with: newValue)
             finished = false
         }
         get {
@@ -100,14 +98,9 @@ class FeedCollectionViewController: UIViewController {
         }
     }
 
-    private var _displayData = [AnyDispplayData]() {
-        didSet {
-            var snapshot = NSDiffableDataSourceSnapshot<Section, AnyDispplayData>()
-            snapshot.appendSections(Section.allCases)
-            snapshot.appendItems(_displayData, toSection: .main)
-            dataSource.apply(snapshot)
-        }
-    }
+    private var _displayData = [AnyDispplayData]()
+    /// 与 _displayData 同步，用于 O(1) 去重（原先每次追加都对整个数组 contains，分页越多越慢）
+    private var displayDataSet = Set<AnyDispplayData>()
 
     private var isLoading = false
 
@@ -117,9 +110,11 @@ class FeedCollectionViewController: UIViewController {
     // MARK: - Public
 
     deinit {
-        print("🧹 FeedCollectionViewController deinitialized")
+        if let menuObserver {
+            NotificationCenter.default.removeObserver(menuObserver)
+        }
     }
-    
+
     func show(in vc: UIViewController) {
         vc.addChild(self)
         vc.view.addSubview(view)
@@ -130,8 +125,37 @@ class FeedCollectionViewController: UIViewController {
 
     func appendData(displayData: [any DisplayData]) {
         isLoading = false
-        _displayData.append(contentsOf: displayData.map { AnyDispplayData(data: $0) }.filter({ !_displayData.contains($0) }))
-        if displayData.count < pageSize - 5 || displayData.count == 0 {
+        // 同一批数据内部也可能重复，重复的 identifier 会让 diffable data source 直接崩溃
+        let newItems = displayData.map { AnyDispplayData(data: $0) }.filter { displayDataSet.insert($0).inserted }
+        _displayData.append(contentsOf: newItems)
+        applySnapshot(animated: true)
+        handlePageLoaded(count: displayData.count)
+    }
+
+    /// 刷新时一次性替换全部数据，避免先置空再追加导致两次 apply、列表闪一下
+    func resetData(displayData: [any DisplayData]) {
+        isLoading = false
+        finished = false
+        let wasEmpty = _displayData.isEmpty
+        replaceItems(with: displayData, animated: wasEmpty)
+        handlePageLoaded(count: displayData.count)
+    }
+
+    private func replaceItems(with displayData: [any DisplayData], animated: Bool = true) {
+        _displayData = displayData.map { AnyDispplayData(data: $0) }.uniqued()
+        displayDataSet = Set(_displayData)
+        applySnapshot(animated: animated)
+    }
+
+    private func applySnapshot(animated: Bool) {
+        var snapshot = NSDiffableDataSourceSnapshot<Section, AnyDispplayData>()
+        snapshot.appendSections(Section.allCases)
+        snapshot.appendItems(_displayData, toSection: .main)
+        dataSource.apply(snapshot, animatingDifferences: animated)
+    }
+
+    private func handlePageLoaded(count: Int) {
+        if count < pageSize - 5 || count == 0 {
             finished = true
             return
         }
@@ -157,12 +181,13 @@ class FeedCollectionViewController: UIViewController {
             make.left.right.bottom.equalToSuperview()
             make.top.equalToSuperview().offset(-60)
         }
+        bgImageView.contentMode = .scaleAspectFill
+        bgImageView.clipsToBounds = true
         bgImageView.setBlurEffectView()
 
         if isShowTopCover?() ?? false {
             // 顶部大图
             let bannerSwiftUIView = BannerView(viewModel: viewModel)
-            self.bannerSwiftUIView = bannerSwiftUIView
             viewModel.focusedBannerButton = { [weak self] in
                 guard let self = self else { return }
                 resetTopView()
@@ -226,30 +251,10 @@ class FeedCollectionViewController: UIViewController {
         collectionView.dataSource = dataSource
         collectionView.delegate = self
 
-        NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_TOP, object: nil, queue: .main) { [weak self] _ in
+        // block 形式的观察者需要保存 token 并在 deinit 移除，否则会一直留在通知中心
+        menuObserver = NotificationCenter.default.addObserver(forName: EVENT_COLLECTION_TO_TOP, object: nil, queue: .main) { [weak self] _ in
             self?.handleMenuPress()
         }
-        
-        // 🚀 Performance: Start DisplayLink coordinator and apply degradation
-        // This ensures smooth 60fps animations with automatic quality adjustment
-        PerformanceDegradation.shared.applyDegradation()
-        
-        #if DEBUG
-        // Monitor performance in debug builds
-        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            PerformanceMonitor.shared.printStats()
-            ParticlePool.shared.printStats()
-        }
-        #endif
-    }
-    
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        
-        // 🚀 Performance: Clean up when view disappears
-        DisplayLinkCoordinator.shared.clear()
-        ParticlePool.shared.clear()
-        CALayer.clearAllScheduled()
     }
 
     func handleMenuPress() {
@@ -274,7 +279,7 @@ class FeedCollectionViewController: UIViewController {
         // 检查是否需要重置顶部视图
         if collectionView.contentOffset.y == -collectionEdgeInsetTop
             && isShowTopCover?() ?? false
-            && viewModel.offsetY != 0 {
+            && topCoverState != .expanded {
             resetTopView()
             return
         }
@@ -344,8 +349,10 @@ class FeedCollectionViewController: UIViewController {
             supplementaryView.label.text = self.headerText
         }
 
-        dataSource.supplementaryViewProvider = { _, _, index in
-            self.collectionView.dequeueConfiguredReusableSupplementary(
+        // dataSource 被 self 持有，闭包里不能强引用 self（原先的 self.collectionView 造成循环引用，控制器永远不会释放），
+        // 直接使用闭包参数里的 collectionView
+        dataSource.supplementaryViewProvider = { collectionView, _, index in
+            collectionView.dequeueConfiguredReusableSupplementary(
                 using: supplementaryRegistration, for: index
             )
         }
@@ -380,20 +387,24 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
 
     func indexPathForPreferredFocusedView(in collectionView: UICollectionView) -> IndexPath? {
         let indexPath = IndexPath(item: 0, section: 0)
-        if let data = dataSource.itemIdentifier(for: indexPath), bgImageView.image == nil {
-            bgImageView.kf.setImage(with: data.data.pic, placeholder: nil, options: nil) { _ in
-            }
-        }
-
+        loadBackgroundImageIfNeeded(for: indexPath)
         return indexPath
+    }
+
+    /// 背景图会被整屏模糊，只需小尺寸即可；并且只在还没有设置过时加载一次，
+    /// 避免首屏每个 cell 的 willDisplay 都发起一次全尺寸下载并互相取消
+    private func loadBackgroundImageIfNeeded(for indexPath: IndexPath) {
+        guard bgImageView.image == nil, bgImageView.kf.taskIdentifier == nil,
+              let pic = dataSource.itemIdentifier(for: indexPath)?.data.pic else { return }
+        bgImageView.kf.setImage(with: pic.addSchemeIfNeed(), options: [
+            .processor(DownsamplingImageProcessor(size: CGSize(width: 480, height: 270))),
+            .transition(.fade(0.3)),
+        ])
     }
 
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         guard _displayData.count > 0 else { return }
-        if let data = dataSource.itemIdentifier(for: indexPath), bgImageView.image == nil {
-            bgImageView.kf.setImage(with: data.data.pic, placeholder: nil, options: nil) { _ in
-            }
-        }
+        loadBackgroundImageIfNeeded(for: indexPath)
         guard indexPath.row == _displayData.count - 1, !isLoading, !finished else {
             return
         }
@@ -408,88 +419,70 @@ extension FeedCollectionViewController: UICollectionViewDelegate {
     }
     
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        // Update parallax layers for background elements
-        bgImageView.applyDepthParallax(depth: 0.0, scrollOffset: scrollView.contentOffset.y, maxParallax: 80)
-        
-        // Update cell parallax if enabled
-        collectionView.updateCellParallax()
+        // 模糊背景的轻微视差：直接设置 transform（滚动本身已逐帧驱动），不再每帧创建一个 UIView 动画。
+        // 位移限制在 [0, 60]，与 bgImageView 顶部多出的 60pt 对应，保证上下边缘不会露出空白
+        let offset = min(max(scrollView.contentOffset.y + collectionEdgeInsetTop, 0) * 0.5, 60)
+        bgImageView.transform = CGAffineTransform(translationX: 0, y: offset)
     }
 
     func collectionView(_ collectionView: UICollectionView, didUpdateFocusIn context: UICollectionViewFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-        print("didUpdateFocusIn")
-
-        if let indexPath = context.nextFocusedIndexPath {
-            if let indexPath = nextFocusedIndexPath {
-                let cell = collectionView.cellForItem(at: indexPath)
-                if let cell = cell as? FeedCollectionViewCell {
-//                    cell.infoView.isHidden = true
-                    cell.infoView.alpha = 0.7
-                }
+        guard let indexPath = context.nextFocusedIndexPath else { return }
+        guard isShowTopCover?() ?? false else { return }
+        let style = styleOverride ?? Settings.displayStyle
+        if (indexPath.row + 1) > style.feedColCount {
+            // 第二行把上面的全部隐藏
+            setTopCoverState(.collapsed)
+            isToToped?(false)
+        } else {
+            // 第一行
+            BLAfter(afterTime: 0.0) {
+                self.setTopCoverState(.peek)
             }
-
-            let cell = collectionView.cellForItem(at: indexPath)
-            if let cell = cell as? FeedCollectionViewCell {
-//                cell.infoView.isHidden = false
-                cell.infoView.alpha = 1
-            }
-
-            if isShowTopCover?() ?? false {
-                // 当前 item 是最左边？
-                let style = styleOverride ?? Settings.displayStyle
-                if (indexPath.row + 1) > style.feedColCount {
-                    // 第二行把上面的全部隐藏
-                    UIView.animate(springDuration: animateTime, bounce: 0.1) {
-                        bannerUIView?.snp.updateConstraints { make in
-                            make.top.equalToSuperview().offset(-1110)
-                        }
-
-                        collectionView.snp.updateConstraints { make in
-                            make.top.equalTo(bannerUIView!.snp.bottom).offset(-10)
-                        }
-                        view.layoutIfNeeded()
-                    }
-
-                    isToToped?(false)
-                } else {
-                    // 第一行
-                    BLAfter(afterTime: 0.0) {
-                        self.viewModel.offsetY = 130
-                        UIView.animate(springDuration: self.animateTime, bounce: 0.1) {
-                            self.bannerUIView?.snp.updateConstraints { make in
-                                make.top.equalToSuperview().offset(-820)
-                            }
-                            collectionView.snp.updateConstraints { make in
-                                if let bannerUIView = self.bannerUIView {
-                                    make.top.equalTo(bannerUIView.snp.bottom).offset(0)
-                                }
-                            }
-                            self.view.layoutIfNeeded()
-                        }
-                    }
-                    isToToped?(false)
-                }
-            }
-
-            // 焦点在第二行
-            nextFocusedIndexPath = indexPath
-  
+            isToToped?(false)
         }
     }
 
     func resetTopView() {
-        if bannerUIView?.superview != nil {
-            UIView.animate(springDuration: animateTime, bounce: 0.1) {
-                self.bannerUIView?.snp.updateConstraints { make in
-                    make.top.equalToSuperview()
-                }
-                self.collectionView.snp.updateConstraints { make in
-                    make.top.equalTo(self.bannerUIView!.snp.bottom).offset(self.animationOffSet)
-                }
-                self.view.layoutIfNeeded()
-            }
-        }
-        viewModel.offsetY = 0
+        setTopCoverState(.expanded)
         isToToped?(true)
+    }
+
+    private func setTopCoverState(_ state: TopCoverState) {
+        // 收起状态下大图不可见，保持原来的 offsetY 不动
+        let offsetY: CGFloat? = switch state {
+        case .expanded: 0
+        case .peek: 130
+        case .collapsed: nil
+        }
+        // @Published 即使赋相同的值也会触发 SwiftUI 刷新，先比较
+        if let offsetY, viewModel.offsetY != offsetY {
+            viewModel.offsetY = offsetY
+        }
+        guard state != topCoverState, let bannerUIView, bannerUIView.superview != nil else { return }
+        topCoverState = state
+
+        let bannerTop: CGFloat
+        let collectionOffset: CGFloat
+        switch state {
+        case .expanded:
+            bannerTop = 0
+            collectionOffset = animationOffSet
+        case .peek:
+            bannerTop = -820
+            collectionOffset = 0
+        case .collapsed:
+            bannerTop = -1110
+            collectionOffset = -10
+        }
+        UIView.animate(springDuration: animateTime, bounce: 0.1) {
+            bannerUIView.snp.updateConstraints { make in
+                make.top.equalToSuperview().offset(bannerTop)
+            }
+            self.collectionView.snp.updateConstraints { make in
+                make.top.equalTo(bannerUIView.snp.bottom).offset(collectionOffset)
+            }
+            self.view.layoutIfNeeded()
+        }
     }
 }
 

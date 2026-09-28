@@ -17,7 +17,6 @@ enum FocusItem {
 
 struct BannerView: View {
     @ObservedObject var viewModel: BannerViewModel
-    @State private var lastChangeTime = Date()
     @FocusState var focusedItem: FocusItem? // 当前焦点对象
     @State private var currentFocusedItem: FocusItem? // 当前焦点对象
     @State private var selectIndex = 0
@@ -28,12 +27,8 @@ struct BannerView: View {
         ZStack(alignment: .bottomLeading) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    // 例如显示加载数据
                     LazyHStack(spacing: 0) {
                         ForEach(viewModel.favdatas, id: \.id) { item in
-
-//                            Image("cover")
-
                             ItemPhoto(Photo(item.cover))
                                 .id(item.id)
                         }
@@ -51,14 +46,6 @@ struct BannerView: View {
                     }
                 }
             }
-
-//            // 底部渐变遮罩
-//            LinearGradient(
-//                colors: [.black.opacity(0.9), .clear],
-//                startPoint: .bottom,
-//                endPoint: .top
-//            )
-//            .ignoresSafeArea()
 
             Image("showBg")
 
@@ -110,7 +97,6 @@ struct BannerView: View {
             // 控制封面的左右移动
             switch direction {
             case .left:
-                print("向左")
                 if currentFocusedItem == .leftButton {
                     // 在这里写你的动画逻辑，比如滚动或改变状态
                     selectIndex = selectIndex - 1
@@ -120,13 +106,9 @@ struct BannerView: View {
                     } else {
                         viewModel.isAnimate = false
                     }
-                    print("向左切换\(selectIndex)")
                     viewModel.setIndex(index: selectIndex)
                 }
             case .right:
-
-                print("向右")
-
                 if currentFocusedItem == .rightButton {
                     // 在这里写你的动画逻辑，比如滚动或改变状态
                     selectIndex = selectIndex + 1
@@ -134,8 +116,6 @@ struct BannerView: View {
                         selectIndex = 0
                     }
                     viewModel.isAnimate = false
-                    print("向右\(selectIndex)")
-
                     viewModel.setIndex(index: selectIndex)
                 }
 
@@ -211,58 +191,33 @@ struct infoView: View {
             .animation(.easeInOut(duration: 0.3), value: viewModel.isAnimate)
 
             HStack(spacing: 22) {
-                if #available(tvOS 26.0, *) {
-                    Button(action: {
-                        if let data = viewModel.selectData {
-                            viewModel.playAction?(data)
-                        }
-                    }) {
-                        Label("播放", systemImage: "play.fill")
-                            .padding(.horizontal, 33)
-                            .foregroundColor(focusedItem == .leftButton ? .black : .white)
+                Button(action: {
+                    if let data = viewModel.selectData {
+                        viewModel.playAction?(data)
                     }
-                    .glassEffect(.clear)
-                    .focused($focusedItem, equals: .leftButton) // 与 @FocusState 绑定
+                }) {
+                    Label("播放", systemImage: "play.fill")
+                        .padding(.horizontal, 33)
+                        .foregroundColor(focusedItem == .leftButton ? .black : .white)
+                }
+                .glassEffect(.clear)
+                .focused($focusedItem, equals: .leftButton) // 与 @FocusState 绑定
 
-                    Button {
-                        if let data = viewModel.selectData {
-                            viewModel.detailAction?(data)
-                        }
-
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(focusedItem == .rightButton ? .black : .white)
+                Button {
+                    if let data = viewModel.selectData {
+                        viewModel.detailAction?(data)
                     }
-                    .glassEffect(.clear)
-                    .focused($focusedItem, equals: .rightButton) // 与 @FocusState 绑定
 
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.white)
-                        .symbolEffect(.breathe)
-                } else {
-                    Button(action: {
-                        if let data = viewModel.selectData {
-                            viewModel.playAction?(data)
-                        }
-                    }) {
-                        Label("播放", systemImage: "play.fill")
-                            .padding(.horizontal, 33)
-                    }
-                    .focused($focusedItem, equals: .leftButton) // 与 @FocusState 绑定
+                } label: {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(focusedItem == .rightButton ? .black : .white)
+                }
+                .glassEffect(.clear)
+                .focused($focusedItem, equals: .rightButton) // 与 @FocusState 绑定
 
-                    Button {
-                        if let data = viewModel.selectData {
-                            viewModel.detailAction?(data)
-                        }
-
-                    } label: {
-                        Image(systemName: "info.circle")
-                    }
-                    .focused($focusedItem, equals: .rightButton) // 与 @FocusState 绑定
-
-                    Image(systemName: "chevron.right")
-                        .symbolEffect(.breathe)
-                } // 默认焦点
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white)
+                    .symbolEffect(.breathe)
             }
         }
         .padding(.leading, 98)
@@ -408,11 +363,6 @@ extension Text.Layout {
         self.flatMap { line in
             line
         }
-    }
-
-    /// A helper function for easier access to all run slices in a layout.
-    var flattenedRunSlices: some RandomAccessCollection<Text.Layout.RunSlice> {
-        flattenedRuns.flatMap(\.self)
     }
 }
 

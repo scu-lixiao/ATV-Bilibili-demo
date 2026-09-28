@@ -80,7 +80,7 @@ extension FollowUpsViewController: UICollectionViewDataSource {
         let data = follows[indexPath.item]
         cell.nameLabel.text = data.uname
         cell.despLabel.text = data.sign
-        cell.imageView.kf.setImage(with: data.face, options: [.processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))), .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))), .cacheSerializer(FormatIndicatedCacheSerializer.png)])
+        cell.imageView.kf.setImage(with: data.face, options: .roundAvatar)
         return cell
     }
 }
@@ -150,6 +150,8 @@ class UpCell: BLMotionCollectionViewCell {
         despLabel.textColor = UIColor(named: "titleColor")
         contentView.backgroundColor = UIColor(named: "bgColor")
         contentView.layer.cornerRadius = normailSornerRadius
+        // 聚焦时名字是跑马灯滚动的，没有 shadowPath 的话阴影每帧都要离屏重算
+        focusShadowCornerRadius = normailSornerRadius
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {

@@ -32,6 +32,7 @@ class BLTextOnlyCollectionViewCell: BLMotionCollectionViewCell {
         titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .medium)
         effectView.layer.cornerRadius = normailSornerRadius
         effectView.clipsToBounds = true
+        focusShadowCornerRadius = normailSornerRadius
     }
 
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {

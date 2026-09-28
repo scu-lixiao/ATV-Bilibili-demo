@@ -17,11 +17,7 @@ class ReplyCell: UICollectionViewCell {
     func config(replay: Replys.Reply) {
         avatarImageView.kf.setImage(
             with: URL(string: replay.member.avatar),
-            options: [
-                .processor(DownsamplingImageProcessor(size: CGSize(width: 80, height: 80))),
-                .processor(RoundCornerImageProcessor(radius: .widthFraction(0.5))),
-                .cacheSerializer(FormatIndicatedCacheSerializer.png),
-            ]
+            options: .roundAvatar
         )
         userNameLabel.text = replay.member.uname
         if let attr = replay.createAttributedString(displayView: contenLabel) {

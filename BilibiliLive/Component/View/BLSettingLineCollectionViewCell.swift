@@ -9,12 +9,9 @@
 import UIKit
 
 class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
-    let selectedWhiteView = UIView()
+    let selectedWhiteView = GlassPanelView(config: .menuItem)
     let titleLabel = UILabel()
-    
-    // 添加一个回调，用于通知父视图焦点变化
-    var onFocusChanged: ((Bool) -> Void)?
-    
+
     override var isSelected: Bool {
         didSet {
             updateView()
@@ -23,22 +20,19 @@ class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
 
     override func setup() {
         super.setup()
-        scaleFactor = 1.05
+        scaleFactor = 1.03
+        // 玻璃背景自带阴影，cell 不再额外叠加一层
+        usesFocusShadow = false
         addsubViews()
+        updateView()
     }
 
     func addsubViews() {
-        // Apply glass effect container
-        selectedWhiteView.setCornerRadius(cornerRadius: moreLittleSornerRadius)
-        selectedWhiteView.isHidden = !isFocused
         contentView.addSubview(selectedWhiteView)
         selectedWhiteView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
-        
-        // Apply initial glass state
-        applyGlassEffect(isFocused: false)
-        
+
         contentView.addSubview(titleLabel)
         titleLabel.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(26)
@@ -50,58 +44,18 @@ class BLSettingLineCollectionViewCell: BLMotionCollectionViewCell {
         titleLabel.textColor = UIColor(named: "titleColor") ?? .white
     }
 
-    // MARK: - Glass Effect Methods
-    
-    /// Applies glass effect based on focus state
-    func applyGlassEffect(isFocused: Bool) {
-        if #available(tvOS 26.0, *) {
-            // Use the new multi-layer glass system
-            GlassNavigationHelper.applyMultiLayerGlass(
-                to: selectedWhiteView,
-                config: .menuItem,
-                isFocused: isFocused
-            )
-        } else {
-            // Fallback for older tvOS versions
-            if isFocused {
-                selectedWhiteView.backgroundColor = UIColor(named: "menuCellColor")?.withAlphaComponent(0.3)
-                selectedWhiteView.layer.borderWidth = 0.5
-                selectedWhiteView.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
-            } else {
-                selectedWhiteView.backgroundColor = UIColor(named: "menuCellColor")?.withAlphaComponent(0.15)
-                selectedWhiteView.layer.borderWidth = 0
-            }
-            selectedWhiteView.layer.cornerRadius = moreLittleSornerRadius
-        }
-    }
-
     override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
         super.didUpdateFocus(in: context, with: coordinator)
-        
-        // 通知父视图焦点变化
-        onFocusChanged?(isFocused)
-        
-        // Animate glass effect transition with spring physics
         coordinator.addCoordinatedAnimations({ [weak self] in
-            guard let self = self else { return }
-            
-            // Update glass effect
-            self.applyGlassEffect(isFocused: self.isFocused)
-            self.updateView()
-            
-            // Enhanced scale animation for focus
-            if self.isFocused {
-                self.transform = CGAffineTransform(scaleX: 1.03, y: 1.03)
-                self.titleLabel.alpha = 1.0
-            } else {
-                self.transform = CGAffineTransform.identity
-                self.titleLabel.alpha = 0.85
-            }
+            self?.updateView()
         }, completion: nil)
     }
 
+    /// 根据焦点 / 选中状态刷新外观，子类可重写以追加自己的状态
     func updateView() {
-        selectedWhiteView.isHidden = !(isFocused || isSelected)
+        selectedWhiteView.setFocused(isFocused)
+        selectedWhiteView.setGlassVisible(isFocused || isSelected)
+        titleLabel.alpha = isFocused ? 1.0 : 0.85
     }
 
     static func makeLayout() -> UICollectionViewCompositionalLayout {

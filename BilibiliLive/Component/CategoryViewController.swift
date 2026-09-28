@@ -19,17 +19,13 @@ class CategoryViewController: UIViewController, BLTabBarContentVCProtocol {
     var categories = [CategoryDisplayModel]()
     let contentView = UIView()
     weak var currentViewController: UIViewController?
+    private var isSideMenuShowing = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        if categories.isEmpty {
-        } else {
+        if !categories.isEmpty {
             initTypeCollectionView()
         }
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
     }
 
     func initTypeCollectionView() {
@@ -58,31 +54,18 @@ class CategoryViewController: UIViewController, BLTabBarContentVCProtocol {
         collectionView(typeCollectionView, didSelectItemAt: IndexPath(item: 0, section: 0))
 
         let backgroundView = UIView()
-        // Apply Premium visual effects matching MenusViewController
-        if #available(tvOS 26.0, *) {
-            // 🎨 统一使用 glassPinkTintDark（与主导航一致）
-            backgroundView.applyLiquidGlass(
-                style: .clear,
-                tintColor: UIColor.glassPinkTintDark,
-                cornerRadius: bigSornerRadius,
-                interactive: false
-            )
-            
-            // 🔲 添加玻璃描边（与主导航一致）
-            backgroundView.layer.borderWidth = 1.0
-            backgroundView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
-        } else if #available(tvOS 18.0, *) {
-            backgroundView.setGlassEffectView(style: .clear,
-                                             cornerRadius: bigSornerRadius,
-                                             tintColor: UIColor(named: "mainBgColor")?.withAlphaComponent(0.7))
-            // 旧版本也添加描边
-            backgroundView.layer.borderWidth = 0.5
-            backgroundView.layer.borderColor = UIColor.lightGray.cgColor
-        } else {
-            backgroundView.setBlurEffectView(cornerRadius: bigSornerRadius)
-            backgroundView.setCornerRadius(cornerRadius: bigSornerRadius, borderColor: .lightGray, borderWidth: 0.5)
-        }
-        
+        // Apply Premium visual effects matching MenusViewController（统一使用 glassPinkTintDark 与玻璃描边）
+        backgroundView.applyLiquidGlass(
+            style: .clear,
+            tintColor: UIColor.glassPinkTintDark,
+            cornerRadius: bigSornerRadius,
+            interactive: false
+        )
+        backgroundView.layer.cornerRadius = bigSornerRadius
+        backgroundView.layer.cornerCurve = .continuous
+        backgroundView.layer.borderWidth = 1.0
+        backgroundView.layer.borderColor = UIColor.glassStrokeBorder.cgColor
+
         view.insertSubview(backgroundView, at: 1)
         backgroundView.snp.makeConstraints { make in
             make.left.right.equalTo(typeCollectionView)
@@ -118,14 +101,12 @@ extension CategoryViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! BLSettingLineCollectionViewCell
         cell.titleLabel.text = categories[indexPath.item].title
-
-        cell.onFocusChanged = { [weak self] isFocused in
-            self?.isShowMenus(isFocused: isFocused)
-        }
         return cell
     }
 
     func isShowMenus(isFocused: Bool) {
+        guard isSideMenuShowing != isFocused else { return }
+        isSideMenuShowing = isFocused
         UIView.animate(springDuration: 0.4, bounce: 0.2) {
             if isFocused {
                 self.typeCollectionView.snp.updateConstraints { make in
@@ -148,6 +129,10 @@ extension CategoryViewController: UICollectionViewDelegate {
     }
 
     func collectionView(_ collectionView: UICollectionView, didUpdateFocusIn context: UICollectionViewFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        // 只在焦点进入 / 离开侧栏时展开或收起。原先由每个 cell 的焦点回调驱动，
+        // 在两个分类间移动时会先收起再展开，连续触发两次弹簧动画导致侧栏抖动
+        isShowMenus(isFocused: context.nextFocusedIndexPath != nil)
+
         if Settings.sideMenuAutoSelectChange == false {
             return
         }

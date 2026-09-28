@@ -12,8 +12,10 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
     private var motionEffectV: UIInterpolatingMotionEffect!
     private var motionEffectH: UIInterpolatingMotionEffect!
     var scaleFactor: CGFloat = 1
-
-    var didUpdateFocus: ((_ isFocused: Bool) -> Void)?
+    /// 聚焦时是否由 cell 自己绘制阴影。内容自带焦点效果/阴影的子类（如封面使用 adjustsImageWhenAncestorFocused）应关闭
+    var usesFocusShadow = true
+    /// 阴影形状的圆角。设置后使用 shadowPath，避免系统每帧根据内容 alpha 离屏计算阴影
+    var focusShadowCornerRadius: CGFloat?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -50,14 +52,26 @@ class BLMotionCollectionViewCell: UICollectionViewCell {
                 self.removeMotionEffect(self.motionEffectV)
             }
         }
-        didUpdateFocus?(isFocused)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateShadowPath()
+    }
+
+    private func updateShadowPath() {
+        guard usesFocusShadow, let radius = focusShadowCornerRadius else {
+            layer.shadowPath = nil
+            return
+        }
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
     }
 
     func updateTransform() {
         if isFocused {
             transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor)
-            //            let scaleDiff = (bounds.size.height * scaleFactor - bounds.size.height) / 2
-            //            transform = CGAffineTransformTranslate(transform, 0, -scaleDiff)
+            guard usesFocusShadow else { return }
+            updateShadowPath()
             layer.shadowOffset = CGSizeMake(0, 4)
             layer.shadowOpacity = 0.2
             layer.shadowRadius = 9.0
