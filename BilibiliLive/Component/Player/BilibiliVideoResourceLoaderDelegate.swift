@@ -85,34 +85,47 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         var supplementCodesc = ""
         // TODO: Need update all codecs with https://developer.apple.com/documentation/http_live_streaming/http_live_streaming_hls_authoring_specification_for_apple_devices/hls_authoring_specification_for_apple_devices_appendixes
         var framerate = info.frame_rate ?? "25"
+
+        // CRITICAL FIX: Convert hev1 to hvc1 for Apple compatibility
+        // Apple devices only support hvc1 format, not hev1
+        // This conversion is ONLY for HEVC-encoded videos (both SDR and HDR)
+        // AVC (avc1) videos are not affected by this conversion
+        if codecs.hasPrefix("hev1.") {
+            codecs = codecs.replacingOccurrences(of: "hev1.", with: "hvc1.")
+            Logger.debug("Converted hev1 to hvc1 for Apple compatibility: \(codecs)")
+        }
+
         if isHDR10 {
             videoRange = "PQ"
             if let value = Double(framerate), value <= 30 {} else {
                 framerate = "30"
             }
         }
-        // Handle Bilibili Dolby Vision: HEVC Main 10 Profile with HLG
-        // Bilibili returns hvc1.2.4.L15x.90 format, need to convert to full standard format
+        // Handle Bilibili Dolby Vision: HEVC Main 10 Profile
+        // Bilibili returns hvc1.2.4.L15x.90 format, need to convert to Apple standard format
         if isDolby && codecs.hasPrefix("hvc1.2.4") {
             // Convert to Apple standard: hvc1.Profile.Compatibility.Level.Constraints
-            // hvc1.2.4.L150.90 -> hvc1.2.40000000.L150.B0
+            // FIXED: hvc1.2.4.L150.90 -> hvc1.2.4.L150.b0 (not hvc1.2.40000000.L150.B0)
             let levelMatch = codecs.range(of: "L15[0-9]", options: .regularExpression)
             if let range = levelMatch {
                 let level = String(codecs[range])
-                // Full format: hvc1.2(Main10).40000000(compatibility).Level.B0(constraints)
-                codecs = "hvc1.2.40000000.\(level).B0"
+                // Correct format: hvc1.2(Main10).4(compatibility).Level.b0(constraints)
+                codecs = "hvc1.2.4.\(level).b0"
                 supplementCodesc = "dvh1.08.07/db4h"
-                videoRange = "HLG"
+                videoRange = "HLG"  // Dolby Vision Profile 8.4 uses HLG
             }
         } else if codecs == "dvh1.08.07" || codecs == "dvh1.08.03" {
+            // Dolby Vision Profile 8.4/8.7 - HLG transfer function
             supplementCodesc = codecs + "/db4h"
             codecs = "hvc1.2.4.L153.b0"
             videoRange = "HLG"
         } else if codecs == "dvh1.08.06" {
+            // Dolby Vision Profile 8.1 - PQ transfer function
             supplementCodesc = codecs + "/db1p"
-            codecs = "hvc1.2.4.L150"
+            codecs = "hvc1.2.4.L150.b0"  // Fixed: added .b0 constraint
             videoRange = "PQ"
         } else if codecs.hasPrefix("dvh1.05") {
+            // Dolby Vision Profile 5 - PQ transfer function
             videoRange = "PQ"
         } else if isHDR {
             Logger.warn("unknown hdr codecs: \(codecs)")
@@ -135,14 +148,14 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     }
 
     private func getVideoPlayList(info: PlaybackInfo) async -> String {
-        let segment = await segmentInfoCache.sidx(from: info.info)
+        let sidxResult = await segmentInfoCache.sidx(from: info.info)
         let inits = info.info.segment_base.initialization.components(separatedBy: "-")
         guard let moovIdxStr = inits.last,
               let moovIdx = Int(moovIdxStr),
               let moovOffset = inits.first,
               let offsetStr = info.info.segment_base.index_range.components(separatedBy: "-").last,
               var offset = Int(offsetStr),
-              let segment = segment
+              let sidxResult = sidxResult
         else {
             return """
             #EXTM3U
@@ -157,6 +170,10 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             """
         }
 
+        // 使用 sidx 实际下载成功的 URL：它已经验证过 CDN 可达，
+        // 首选节点（如 PCDN）连不上时分片请求会整体切到可用的备用线路
+        let segment = sidxResult.sidx
+        let segmentURL = sidxResult.url
         var playList = """
         #EXTM3U
         #EXT-X-VERSION:7
@@ -164,7 +181,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         #EXT-X-MEDIA-SEQUENCE:1
         #EXT-X-INDEPENDENT-SEGMENTS
         #EXT-X-PLAYLIST-TYPE:VOD
-        #EXT-X-MAP:URI="\(info.url)",BYTERANGE="\(moovIdx + 1)@\(moovOffset)"
+        #EXT-X-MAP:URI="\(segmentURL)",BYTERANGE="\(moovIdx + 1)@\(moovOffset)"
 
         """
         offset += 1
@@ -172,7 +189,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             let segStr = """
             #EXTINF:\(Double(segInfo.duration) / Double(segment.timescale)),
             #EXT-X-BYTERANGE:\(segInfo.size)@\(offset)
-            \(info.url)
+            \(segmentURL)
 
             """
             playList.append(segStr)
@@ -417,17 +434,29 @@ enum BVideoUrlUtils {
         if let backup {
             urls.append(contentsOf: backup)
         }
-        return
-            urls.sorted { lhs, rhs in
-                let lhsIsPCDN = lhs.contains("szbdyd.com") || lhs.contains("mcdn.bilivideo.cn")
-                let rhsIsPCDN = rhs.contains("szbdyd.com") || rhs.contains("mcdn.bilivideo.cn")
-                switch (lhsIsPCDN, rhsIsPCDN) {
-                case (true, false): return false
-                case (false, true): return true
-                case (true, true): fallthrough
-                case (false, false): return lhs > rhs
-                }
-            }
+        // PCDN 垫底，其余保持 API 返回顺序（enumerated + offset 实现稳定排序）
+        return urls.enumerated()
+            .sorted { (tier($0.element), $0.offset) < (tier($1.element), $1.offset) }
+            .map(\.element)
+    }
+
+    // PCDN 特征：带端口，或已知的 P2P CDN 域名（部分 PCDN 域名不带端口，仅靠端口判断会漏）
+    static func isPCDN(_ urlString: String) -> Bool {
+        guard let components = URLComponents(string: urlString) else {
+            return false
+        }
+        if components.port != nil {
+            return true
+        }
+        guard let host = components.host?.lowercased() else {
+            return false
+        }
+        return host.hasSuffix("szbdyd.com") || host.hasSuffix("mcdn.bilivideo.cn")
+    }
+
+    /// 0 = 普通 CDN，1 = PCDN（仅作最后备援）
+    static func tier(_ urlString: String) -> Int {
+        isPCDN(urlString) ? 1 : 0
     }
 
     static func convertVTTFormate(_ time: CGFloat) -> String {
@@ -461,14 +490,28 @@ extension VideoPlayURLInfo.DashInfo.DashMediaInfo {
 }
 
 actor SidxDownloader {
-    private enum CacheEntry {
-        case inProgress(Task<SidxParseUtil.Sidx?, Never>)
-        case ready(SidxParseUtil.Sidx?)
+    struct SidxResult {
+        let sidx: SidxParseUtil.Sidx
+        let url: String
     }
+
+    private enum CacheEntry {
+        case inProgress(Task<SidxResult?, Never>)
+        case ready(SidxResult?)
+    }
+
+    // sidx 只有几 KB，用短超时的独立 Session，避免 PCDN 连不上时默认 60s 超时把起播卡死
+    private static let session: Session = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 6
+        config.timeoutIntervalForResource = 10
+        config.headers = HTTPHeaders(["User-Agent": Keys.userAgent])
+        return Session(configuration: config)
+    }()
 
     private var cache: [VideoPlayURLInfo.DashInfo.DashMediaInfo: CacheEntry] = [:]
 
-    func sidx(from info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxParseUtil.Sidx? {
+    func sidx(from info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxResult? {
         if let cached = cache[info] {
             switch cached {
             case let .ready(sidx):
@@ -492,16 +535,21 @@ actor SidxDownloader {
         return sidx
     }
 
-    private func downloadSidx(info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxParseUtil.Sidx? {
+    // 依次尝试多个 CDN，返回第一个成功下载并解析出 sidx 的 URL，作为后续分片的请求地址
+    private func downloadSidx(info: VideoPlayURLInfo.DashInfo.DashMediaInfo) async -> SidxResult? {
         let range = info.segment_base.index_range
-        let url = info.playableURLs.first ?? info.base_url
-        if let res = try? await AF.request(url,
-                                           headers: ["Range": "bytes=\(range)",
-                                                     "Referer": "https://www.bilibili.com/"])
-            .serializingData().result.get()
-        {
-            let segment = SidxParseUtil.processIndexData(data: res)
-            return segment
+        for url in info.playableURLs.prefix(3) {
+            if let res = try? await Self.session.request(url,
+                                                         headers: ["Range": "bytes=\(range)",
+                                                                   "Referer": "https://www.bilibili.com/"])
+                .validate()
+                .serializingData().result.get(),
+                let segment = SidxParseUtil.processIndexData(data: res),
+                !segment.segments.isEmpty
+            {
+                return SidxResult(sidx: segment, url: url)
+            }
+            Logger.warn("sidx download failed on \(URLComponents(string: url)?.host ?? url), try next url")
         }
         return nil
     }
