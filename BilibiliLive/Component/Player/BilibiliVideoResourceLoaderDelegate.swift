@@ -272,7 +272,10 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             }
         }
 
-        let probedFormats = await probeVideoFormats(videos)
+        // 显示设备不支持 HDR 且存在 SDR 流时，HDR 流随后会被移除，无需探测（探测最长会阻塞起播 3 秒）
+        let hdrEligible = AVPlayer.eligibleForHDRPlayback
+        let skipProbe = !hdrEligible && videos.contains(where: { !HLSVideoFormat.needsProbe(qn: $0.id, codecs: $0.codecs) })
+        let probedFormats = skipProbe ? [:] : await probeVideoFormats(videos)
         var videoFormats = videos.map { video in
             let format = HLSVideoFormat.resolve(qn: video.id,
                                                 codecs: video.codecs,
@@ -286,7 +289,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
 
         // 显示设备不支持 HDR 时，只要还有 SDR 流就不再提供 HDR / 杜比视界流，
         // 避免在 SDR 电视上播放经色调映射的 HDR 画面并浪费带宽
-        if !AVPlayer.eligibleForHDRPlayback, videoFormats.contains(where: { !$0.format.isHDR }) {
+        if !hdrEligible, videoFormats.contains(where: { !$0.format.isHDR }) {
             videoFormats.removeAll(where: { $0.format.isHDR })
             videos = videoFormats.map(\.video)
             Logger.info("display is not eligible for HDR playback, HDR variants removed")

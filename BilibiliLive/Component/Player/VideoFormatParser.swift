@@ -550,7 +550,9 @@ struct HLSVideoFormat: Equatable {
                 case 4: .hlg
                 default: nil
                 }
-                let finalRange = range ?? compatibleRange ?? .pq
+                // 以兼容 ID 为准：HLG 基础层的 colr / VUI 可能按 BT.2100 的兼容做法写成 14（BT.2020），
+                // 再用 alternative transfer characteristics SEI 标记 HLG，只看传输特性会误判为 SDR
+                let finalRange = compatibleRange ?? range ?? .pq
                 let brand: String = switch finalRange {
                 case .pq: "db1p"
                 case .sdr: "db2g"
