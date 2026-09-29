@@ -21,6 +21,14 @@ jobs:
         run: |
           fastlane build_unsign_ipa
 
+      # 仓库是 fork，下面的 nightly release 步骤不会执行，未签名 IPA 通过 Artifacts 下载
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v7
+        with:
+          path: BilbiliAtvDemo.ipa
+          archive: false
+          if-no-files-found: error
+
       # - name: List, filter and delete artifacts
       #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       #   uses: actions/github-script@v6
