@@ -21,9 +21,9 @@ doc/
 .AppleDouble
 .LSOverride
 
-# GitHub Configuration
-.github/
-.github/copilot-instructions.md
+# GitHub Configuration（只跟踪 workflows）
+.github/*
+!.github/workflows/
 
 # MCP Configuration
 .mcp.json

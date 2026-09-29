@@ -25,7 +25,7 @@ bundle exec fastlane build_unsign_ipa    # Release, unsigned → ./BilbiliAtvDem
 - If `xcodebuild` says the active developer directory is CommandLineTools, prefix the command with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 - With `-quiet`, xcodebuild prints spurious `error: the following command failed with exit code 0` lines. Go by the exit status instead.
 - The project uses an Xcode file-system synchronized root group. New files under `BilibiliLive/` are picked up automatically, so don't edit `project.pbxproj` to add sources.
-- There is no CI. `.github/` is gitignored, and commit 64692bc removed the upstream workflow from the repo. A local, untracked `.github/workflows/build.yml` may still exist. If CI is re-enabled, it needs Xcode 26 or later, because the code needs the tvOS 26 SDK.
+- CI (`.github/workflows/build.yml`) runs `fastlane build_unsign_ipa` on pushes and PRs to `main`. It uses the `macos-26` runner with the newest Xcode 26.x, and it must stay on Xcode 26 or later for the tvOS 26 SDK. The workflow's `nightly` release step is skipped because this repo is a fork. Everything else in `.github/` is gitignored.
 - **Formatting:** the "Swift formate" build phase is commented out, so nothing formats on build, and much of the existing code is unformatted. To format by hand, run from `BuildTools/`: `swift run -c release swiftformat --disable unusedArguments,numberFormatting,redundantReturn,andOperator,anyObjectProtocol,trailingClosures,redundantFileprivate --ranges nospace --swiftversion 5 <paths>`. Pass only the files you touched, or you will reformat the whole repo.
 
 ## Architecture
