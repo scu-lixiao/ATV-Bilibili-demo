@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 An unofficial, non-commercial tvOS-only Bilibili client. It is a fork of `yichengchen/ATV-Bilibili-demo` with an Apple TV+ style redesign. It is built with UIKit and AVKit (no SwiftUI) as one app target, `BilibiliLive`. The deployment target is **tvOS 26.0**, and the code calls tvOS 26 APIs such as `UIGlassEffect`. The project uses Swift 5 language mode. UI strings, code comments and commit messages are mostly in Chinese. Commits use a conventional prefix with a Chinese summary, for example `fix: 杜比视界 ...`.
 
-`.github/copilot-instructions.md` has a longer overview, but some of it is out of date. It claims tvOS 15, format-on-build, and a `WebRequest.req` signing helper. Where it disagrees with this file, trust the code.
+A local, gitignored `.github/copilot-instructions.md` may exist with a longer overview, but some of it is out of date. It claims tvOS 15, format-on-build, and a `WebRequest.req` signing helper. Where it disagrees with this file, trust the code.
 
 ## Build
 
@@ -25,7 +25,7 @@ bundle exec fastlane build_unsign_ipa    # Release, unsigned → ./BilbiliAtvDem
 - If `xcodebuild` says the active developer directory is CommandLineTools, prefix the command with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 - With `-quiet`, xcodebuild prints spurious `error: the following command failed with exit code 0` lines. Go by the exit status instead.
 - The project uses an Xcode file-system synchronized root group. New files under `BilibiliLive/` are picked up automatically, so don't edit `project.pbxproj` to add sources.
-- CI (`.github/workflows/build.yml`) runs `fastlane build_unsign_ipa` on pushes and PRs to `main` and publishes a `nightly` release. It pins Xcode 16.1, whose SDK predates the tvOS 26 APIs this code uses.
+- There is no CI. `.github/` is gitignored, and commit 64692bc removed the upstream workflow from the repo. A local, untracked `.github/workflows/build.yml` may still exist. If CI is re-enabled, it needs Xcode 26 or later, because the code needs the tvOS 26 SDK.
 - **Formatting:** the "Swift formate" build phase is commented out, so nothing formats on build, and much of the existing code is unformatted. To format by hand, run from `BuildTools/`: `swift run -c release swiftformat --disable unusedArguments,numberFormatting,redundantReturn,andOperator,anyObjectProtocol,trailingClosures,redundantFileprivate --ranges nospace --swiftversion 5 <paths>`. Pass only the files you touched, or you will reformat the whole repo.
 
 ## Architecture
