@@ -14,7 +14,6 @@ import Alamofire
 import Kingfisher
 import MarqueeLabel
 import SnapKit
-import TVUIKit
 
 class VideoDetailViewController: UIViewController {
     private let animateTime = 0.8
@@ -741,9 +740,6 @@ extension VideoDetailViewController: UICollectionViewDataSource {
         }
     }
 }
-
-/// storyboard 中使用的 TVCardView 子类
-class BLCardView: TVCardView {}
 
 extension VideoDetailViewController {
     func makePageCollectionViewLayout() -> UICollectionViewLayout {
