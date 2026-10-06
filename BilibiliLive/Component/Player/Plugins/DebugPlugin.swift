@@ -16,6 +16,8 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
     private var debugTimer: Timer?
     private weak var player: AVPlayer?
     private var debugEnable: Bool { debugTimer?.isValid ?? false }
+    /// 正在解码的音轨格式，异步读取，下一次刷新时显示
+    private var audioTrackInfo: String?
 
     var customInfo: String = ""
     var additionDebugInfo: (() -> String)?
@@ -115,6 +117,14 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
             logs += "\n🖥️ Match content: system \(displayManager.isDisplayCriteriaMatchingEnabled ? "on" : "off"), criteria \(criteria)\(switching), HDR output \(AVPlayer.eligibleForHDRPlayback ? "yes" : "no")"
         }
 
+        if let item = player.currentItem {
+            refreshAudioTrackInfo(item: item)
+        }
+        if let audioTrackInfo {
+            logs += "\n" + audioTrackInfo
+        }
+        logs += "\n" + audioOutputInfo()
+
         guard let log = player.currentItem?.accessLog() else { return logs }
         guard let item = log.events.last else { return logs }
         let uri = item.uri ?? ""
@@ -142,6 +152,71 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
             logs = logs + "\n" + customInfo
         }
         return logs
+    }
+
+    // MARK: - Audio
+
+    private func refreshAudioTrackInfo(item: AVPlayerItem) {
+        guard let track = item.tracks.first(where: { $0.isEnabled && $0.assetTrack?.mediaType == .audio })?.assetTrack else {
+            audioTrackInfo = nil
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let description = try? await track.load(.formatDescriptions).first,
+                  let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee
+            else { return }
+            let sampleRate = String(format: "%.1fkHz", asbd.mSampleRate / 1000)
+            self?.audioTrackInfo = "🔊 Audio: \(Self.audioCodecName(asbd.mFormatID)), \(asbd.mChannelsPerFrame)ch, \(sampleRate)"
+        }
+    }
+
+    /// renderingMode 是系统实际采用的输出方式：功放收到杜比全景声时为 Dolby Atmos
+    private func audioOutputInfo() -> String {
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute.outputs.first.map { "\($0.portType.rawValue) \"\($0.portName)\"" } ?? "none"
+        return "🔈 Audio output: \(Self.renderingModeName(session.renderingMode)), \(route), \(session.outputNumberOfChannels)/\(session.maximumOutputNumberOfChannels)ch, multichannel \(session.supportsMultichannelContent ? "on" : "off")"
+    }
+
+    private static func renderingModeName(_ mode: AVAudioSession.RenderingMode) -> String {
+        switch mode {
+        case .notApplicable:
+            return "N/A"
+        case .monoStereo:
+            return "Stereo"
+        case .surround:
+            return "Surround"
+        case .spatialAudio:
+            return "Spatial Audio"
+        case .dolbyAudio:
+            return "Dolby Audio"
+        case .dolbyAtmos:
+            return "Dolby Atmos"
+        @unknown default:
+            return "unknown(\(mode.rawValue))"
+        }
+    }
+
+    private static func audioCodecName(_ formatID: AudioFormatID) -> String {
+        switch formatID {
+        case kAudioFormatEnhancedAC3:
+            return "E-AC-3 (Dolby Digital Plus)"
+        case kAudioFormatAC3:
+            return "AC-3 (Dolby Digital)"
+        case kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE, kAudioFormatMPEG4AAC_HE_V2:
+            return "AAC"
+        case kAudioFormatFLAC:
+            return "FLAC"
+        case kAudioFormatAppleLossless:
+            return "ALAC"
+        case kAudioFormatLinearPCM:
+            return "LPCM"
+        default:
+            return String(format: "%c%c%c%c",
+                          (formatID >> 24) & 0xff,
+                          (formatID >> 16) & 0xff,
+                          (formatID >> 8) & 0xff,
+                          formatID & 0xff)
+        }
     }
     
     private func extractVideoFormatFromURI(_ uri: String, playerItem: AVPlayerItem?) -> String? {

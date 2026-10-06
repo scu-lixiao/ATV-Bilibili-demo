@@ -38,7 +38,6 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     private var subtitles = [String: String]()
     private var videoInfo = [PlaybackInfo]()
     private var segmentInfoCache = SidxDownloader()
-    private var hasAudioInMasterListAdded = false
     private(set) var playInfo: VideoPlayURLInfo?
     private var hasSubtitle = false
     private var hasPreferSubtitleAdded = false
@@ -58,6 +57,16 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
 
     let videoCodecBlackList = ["avc1.640034"] // high 5.2 is not supported
 
+    /// HLS 音频组，按编码各放一条音轨，每个视频档位与每个组各组成一个 variant（Apple HLS 规范的做法）。
+    /// 各组 NAME 相同，AVPlayer 把它们当作同一条音轨的不同编码，起播时选可播放的最高码率组合，
+    /// 所以有杜比 / FLAC 时优先选它们；之后不会在杜比与 AAC 之间切换，FLAC 与 AAC 之间会随带宽切换
+    private struct AudioGroup {
+        let id: String
+        /// 追加到 EXT-X-STREAM-INF CODECS 中的音频编码
+        let codecs: String
+        let bandwidth: Int
+    }
+
     private func reset() {
         playlists.removeAll()
         masterPlaylist = """
@@ -69,7 +78,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         """
     }
 
-    private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int, format: HLSVideoFormat) {
+    private func addVideoPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int, format: HLSVideoFormat, audioGroups: [AudioGroup]) {
         guard !videoCodecBlackList.contains(info.codecs) else { return }
         let subtitlePlaceHolder = hasSubtitle ? ",SUBTITLES=\"subs\"" : ""
         if format.isHDR {
@@ -96,12 +105,20 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         if format.isProbed {
             formatQuery += "&probed=1"
         }
-        let content = """
-        #EXT-X-STREAM-INF:AUDIO="audio"\(subtitlePlaceHolder),CODECS="\(format.codecs)"\(supplementCodecs),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(info.bandwidth),VIDEO-RANGE=\(format.videoRange.rawValue)
-        \(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)&rate=\(info.frame_rate ?? framerate)&width=\(info.width ?? 0)&host=\(URL(string: url)?.host ?? "none")&range=\(info.id)\(formatQuery)
+        let uri = "\(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)&rate=\(info.frame_rate ?? framerate)&width=\(info.width ?? 0)&host=\(URL(string: url)?.host ?? "none")&range=\(info.id)\(formatQuery)"
+        // 视频与每个音频组各组成一个 variant，共用同一个子播放列表
+        let variants: [AudioGroup?] = audioGroups.isEmpty ? [nil] : audioGroups
+        for audio in variants {
+            let audioAttribute = audio.map { "AUDIO=\"\($0.id)\"," } ?? ""
+            let codecs = audio.map { "\(format.codecs),\($0.codecs)" } ?? format.codecs
+            let bandwidth = info.bandwidth + (audio?.bandwidth ?? 0)
+            let content = """
+            #EXT-X-STREAM-INF:\(audioAttribute)CODECS="\(codecs)"\(supplementCodecs),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(bandwidth),VIDEO-RANGE=\(format.videoRange.rawValue)\(subtitlePlaceHolder)
+            \(uri)
 
-        """
-        masterPlaylist.append(content)
+            """
+            masterPlaylist.append(content)
+        }
         videoInfo.append(PlaybackInfo(info: info, url: url, duration: duration))
     }
 
@@ -188,39 +205,32 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         return playList
     }
 
-    private func addAudioPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, url: String, duration: Int) {
-        guard !videoCodecBlackList.contains(info.codecs) else { return }
-        let defaultStr = !hasAudioInMasterListAdded ? "YES" : "NO"
+    /// 每条音轨只写一个 rendition：子播放列表由 SidxDownloader 依次尝试各 CDN 生成，不需要按 URL 重复
+    private func addAudioPlayBackInfo(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, groupID: String, channels: String, duration: Int) -> AudioGroup? {
+        guard let url = info.playableURLs.first else { return nil }
         let content = """
-        #EXT-X-MEDIA:TYPE=AUDIO,DEFAULT=\(defaultStr),GROUP-ID="audio",NAME="Main",URI="\(URLs.customDashPrefix)\(videoInfo.count)"
+        #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="\(groupID)",NAME="Main",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="\(channels)",URI="\(URLs.customDashPrefix)\(videoInfo.count)?codec=\(info.codecs)"
 
         """
-
         masterPlaylist.append(content)
         videoInfo.append(PlaybackInfo(info: info, url: url, duration: duration))
+        return AudioGroup(id: groupID, codecs: info.codecs, bandwidth: info.bandwidth)
     }
 
-    private func addAudioPlayBackInfo(codec: String, bandwidth: Int, duration: Int, url: String) {
-        let defaultStr = !hasAudioInMasterListAdded ? "YES" : "NO"
-        hasAudioInMasterListAdded = true
-        let content = """
-        #EXT-X-MEDIA:TYPE=AUDIO,DEFAULT=\(defaultStr),GROUP-ID="audio",NAME="Main",URI="\(URLs.customPrefix)\(playlists.count)"
-
-        """
-        masterPlaylist.append(content)
-
-        let playList = """
-        #EXTM3U
-        #EXT-X-VERSION:6
-        #EXT-X-TARGETDURATION:\(duration)
-        #EXT-X-INDEPENDENT-SEGMENTS
-        #EXT-X-MEDIA-SEQUENCE:1
-        #EXT-X-PLAYLIST-TYPE:VOD
-        #EXTINF:\(duration)
-        \(url)
-        #EXT-X-ENDLIST
-        """
-        playlists.append(playList)
+    /// 杜比音轨的接口 codecs 只有 ec-3，起播前解析 dec3 得到声道布局以及是否为全景声
+    @MainActor
+    private func probeAudioFormat(_ audio: VideoPlayURLInfo.DashInfo.DashMediaInfo?) async -> AudioFormatInfo? {
+        guard let audio else { return nil }
+        let cache = segmentInfoCache
+        let format = await withDeadline(seconds: formatProbeTimeout) {
+            await cache.sidx(from: audio)?.audioFormat
+        }
+        if let format {
+            Logger.debug("probe audio format \(audio.id): \(String(describing: format))")
+        } else {
+            Logger.warn("probe audio format failed: \(audio.id) \(audio.codecs), fallback to inferred channels")
+        }
+        return format
     }
 
     private func addSubtitleData(lang: String, name: String, duration: Int, url: String) {
@@ -272,6 +282,10 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             }
         }
 
+        let dolby = Settings.losslessAudio ? info.dash.dolby : nil
+        let dolbyAudio = dolby?.audio?.max(by: { $0.bandwidth < $1.bandwidth })
+        async let dolbyFormat = probeAudioFormat(dolbyAudio)
+
         // 不按 AVPlayer.eligibleForHDRPlayback 过滤 HDR 流：Apple TV 设为 SDR 并开启「匹配动态范围」时，
         // 起播前它为 false，过滤后电视永远不会切换到 HDR。SDR 显示设备由 AVPlayer 按 VIDEO-RANGE 自行选流
         let probedFormats = await probeVideoFormats(videos)
@@ -286,29 +300,29 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             return (video: video, format: format)
         }
 
+        var audios = [(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, groupID: String, channels: String)]()
+        if let dolbyAudio {
+            var format = await dolbyFormat ?? AudioFormatInfo(sampleEntry: "ec-3", channelCount: 6)
+            // dec3 可能没写 JOC 扩展：接口标为全景声（dolby.type 2 / 音质 30250）时按全景声声明
+            if format.jocComplexityIndex == nil, dolby?.type == 2 || dolbyAudio.id == 30250 {
+                format.jocComplexityIndex = 16
+            }
+            audios.append((dolbyAudio, "dolby", format.hlsChannels))
+        } else if Settings.losslessAudio, let flac = info.dash.flac?.audio {
+            // 有杜比时不加 FLAC：AVPlayer 起播选最高码率，FLAC 会压过杜比全景声
+            audios.append((flac, "flac", "2"))
+        }
+        // Apple HLS 规范要求始终提供立体声 AAC，作为兼容兜底
+        if let aac = info.dash.audio?.max(by: { $0.bandwidth < $1.bandwidth }) {
+            audios.append((aac, "aac", "2"))
+        }
+        let audioGroups = audios.compactMap {
+            addAudioPlayBackInfo(info: $0.info, groupID: $0.groupID, channels: $0.channels, duration: info.dash.duration)
+        }
+
         for (video, format) in videoFormats {
             for url in video.playableURLs {
-                addVideoPlayBackInfo(info: video, url: url, duration: info.dash.duration, format: format)
-            }
-        }
-
-        if Settings.losslessAudio {
-            if let audios = info.dash.dolby?.audio {
-                for audio in audios {
-                    for url in BVideoUrlUtils.sortUrls(base: audio.base_url, backup: audio.backup_url) {
-                        addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)
-                    }
-                }
-            } else if let audio = info.dash.flac?.audio {
-                for url in audio.playableURLs {
-                    addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)
-                }
-            }
-        }
-
-        for audio in info.dash.audio ?? [] {
-            for url in audio.playableURLs {
-                addAudioPlayBackInfo(info: audio, url: url, duration: info.dash.duration)
+                addVideoPlayBackInfo(info: video, url: url, duration: info.dash.duration, format: format, audioGroups: audioGroups)
             }
         }
 
@@ -497,6 +511,8 @@ actor SidxDownloader {
         let url: String
         /// 视频流初始化分段中解析出的格式信息（音频流为 nil）
         let format: VideoFormatInfo?
+        /// 音频流初始化分段中解析出的格式信息（视频流为 nil）
+        let audioFormat: AudioFormatInfo?
     }
 
     private enum CacheEntry {
@@ -555,10 +571,15 @@ actor SidxDownloader {
                 !segment.segments.isEmpty
             {
                 var format: VideoFormatInfo?
-                if isVideo, let initData = header?.initData(in: res) {
-                    format = MP4FormatParser.parseVideoFormat(initSegment: initData)
+                var audioFormat: AudioFormatInfo?
+                if let initData = header?.initData(in: res) {
+                    if isVideo {
+                        format = MP4FormatParser.parseVideoFormat(initSegment: initData)
+                    } else {
+                        audioFormat = MP4FormatParser.parseAudioFormat(initSegment: initData)
+                    }
                 }
-                return SidxResult(sidx: segment, url: url, format: format)
+                return SidxResult(sidx: segment, url: url, format: format, audioFormat: audioFormat)
             }
             Logger.warn("sidx download failed on \(URLComponents(string: url)?.host ?? url), try next url")
         }

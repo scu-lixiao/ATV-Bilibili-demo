@@ -6,6 +6,7 @@
 //  用于给 HLS 主播放列表生成准确的 CODECS / SUPPLEMENTAL-CODECS / VIDEO-RANGE。
 //  B 站接口返回的 codecs 字段只有粗略的 profile/level，无法区分 PQ 与 HLG，
 //  杜比视界也只给出 dvh1.PP.LL（不含基础层兼容 ID），仅凭它推断很容易出错。
+//  音频轨同理：杜比音轨只给出 ec-3，声道布局与是否为全景声要从 dec3 中解析，用于生成 CHANNELS。
 //
 
 import Foundation
@@ -35,25 +36,60 @@ struct VideoFormatInfo: Hashable {
     var hasContentLightLevel = false
 }
 
+/// 从音频初始化分段中解析出的格式信息
+struct AudioFormatInfo: Hashable {
+    /// stsd 里的 sample entry 类型，如 mp4a / ec-3 / ac-3 / fLaC
+    var sampleEntry = ""
+    /// 声道数（含 LFE）。E-AC-3 按 dec3 计算，其余取 AudioSampleEntry 的 channelcount
+    var channelCount = 0
+    /// E-AC-3 JOC（杜比全景声）的 complexity_index_type_a，即对象数；非全景声为 nil
+    var jocComplexityIndex: Int?
+
+    /// HLS EXT-X-MEDIA 的 CHANNELS 属性。Apple HLS 规范：全景声写 "<complexity_index_type_a>/JOC"，如 "16/JOC"
+    var hlsChannels: String {
+        if let jocComplexityIndex {
+            return "\(jocComplexityIndex > 0 ? jocComplexityIndex : 16)/JOC"
+        }
+        return String(channelCount)
+    }
+}
+
 enum MP4FormatParser {
     /// 解析 ftyp + moov（DASH initialization 范围）中第一个视频轨的格式
     static func parseVideoFormat(initSegment data: Data) -> VideoFormatInfo? {
+        for entry in sampleEntries(initSegment: data) {
+            if let info = parseVisualSampleEntry(type: entry.type, payload: entry.payload) {
+                return info
+            }
+        }
+        return nil
+    }
+
+    /// 解析 ftyp + moov 中第一个音频轨的格式
+    static func parseAudioFormat(initSegment data: Data) -> AudioFormatInfo? {
+        for entry in sampleEntries(initSegment: data) {
+            if let info = parseAudioSampleEntry(type: entry.type, payload: entry.payload) {
+                return info
+            }
+        }
+        return nil
+    }
+
+    /// moov 中各轨道 stsd 里的 sample entry
+    private static func sampleEntries(initSegment data: Data) -> [Box] {
         let bytes = [UInt8](data)
         guard let moov = boxes(in: bytes).first(where: { $0.type == "moov" })?.payload else {
-            return nil
+            return []
         }
+        var entries = [Box]()
         for trak in boxes(in: moov) where trak.type == "trak" {
             guard let stsd = findBox(path: ["mdia", "minf", "stbl", "stsd"], in: trak.payload),
                   stsd.count > 8
             else { continue }
             // stsd 是 FullBox：version(1) + flags(3) + entry_count(4)
-            for entry in boxes(in: Array(stsd[8...])) {
-                if let info = parseVisualSampleEntry(type: entry.type, payload: entry.payload) {
-                    return info
-                }
-            }
+            entries += boxes(in: Array(stsd[8...]))
         }
-        return nil
+        return entries
     }
 
     // MARK: - Box
@@ -234,6 +270,76 @@ enum MP4FormatParser {
             codec += "." + String(byte, radix: 16, uppercase: true)
         }
         return codec
+    }
+
+    // MARK: - Audio
+
+    /// SampleEntry(8) + reserved(8) + channelcount(2) + samplesize(2) + pre_defined(2) + reserved(2) + samplerate(4)
+    private static let audioSampleEntryHeaderSize = 28
+
+    private static func parseAudioSampleEntry(type: String, payload: [UInt8]) -> AudioFormatInfo? {
+        guard ["mp4a", "ec-3", "ac-3", "fLaC", "alac", "Opus"].contains(type),
+              payload.count >= audioSampleEntryHeaderSize,
+              // 只处理 ISO 格式（version 0），QuickTime v1 / v2 声音描述的字段布局不同
+              readUInt16(payload, 8) == 0
+        else {
+            return nil
+        }
+        var info = AudioFormatInfo()
+        info.sampleEntry = type
+        info.channelCount = Int(readUInt16(payload, 16))
+        for child in boxes(in: Array(payload[audioSampleEntryHeaderSize...])) where child.type == "dec3" {
+            if let ec3 = parseEC3Config(child.payload) {
+                info.channelCount = ec3.channelCount
+                info.jocComplexityIndex = ec3.jocComplexityIndex
+            }
+        }
+        return info
+    }
+
+    /// acmod 对应的主声道数（不含 LFE），acmod 0 为双单声道 1+1
+    private static let ec3AcmodChannels = [2, 1, 2, 3, 3, 4, 4, 5]
+
+    /// EC3SpecificBox（dec3，ETSI TS 102 366 附录 F.6）。
+    /// 只统计第一个独立子流及其依赖子流（主节目）的声道；其后可选的 flag_ec3_extension_type_a 标记 JOC（杜比全景声）
+    static func parseEC3Config(_ p: [UInt8]) -> (channelCount: Int, jocComplexityIndex: Int?)? {
+        guard p.count >= 5 else { return nil }
+        // data_rate(13) + num_ind_sub(3)
+        let independentSubstreams = Int(p[1] & 0x07) + 1
+        var channelCount = 0
+        var offset = 2
+        for index in 0..<independentSubstreams {
+            guard offset + 3 <= p.count else { return nil }
+            // fscod(2) bsid(5) reserved(1) asvc(1) bsmod(3) acmod(3) lfeon(1) reserved(3) num_dep_sub(4) + 1 bit
+            let bits = Int(p[offset]) << 16 | Int(p[offset + 1]) << 8 | Int(p[offset + 2])
+            let acmod = (bits >> 9) & 0x07
+            let lfeon = (bits >> 8) & 0x01
+            let dependentSubstreams = (bits >> 1) & 0x0F
+            offset += 3
+            var chanLoc = 0
+            if dependentSubstreams > 0 {
+                guard offset < p.count else { return nil }
+                chanLoc = (bits & 0x01) << 8 | Int(p[offset])
+                offset += 1
+            }
+            if index == 0 {
+                channelCount = ec3AcmodChannels[acmod] + lfeon + ec3ChanLocChannels(chanLoc)
+            }
+        }
+        // reserved(7) + flag_ec3_extension_type_a(1) + complexity_index_type_a(8)
+        guard offset + 2 <= p.count, p[offset] & 0x01 == 1 else {
+            return (channelCount, nil)
+        }
+        return (channelCount, Int(p[offset + 1]))
+    }
+
+    /// 依赖子流 chan_loc 中各位（bit 0 为最高位）新增的声道数：
+    /// Lc/Rc、Lrs/Rrs、Cs、Ts、Lsd/Rsd、Lw/Rw、Lvh/Rvh、Cvh、LFE2
+    private static func ec3ChanLocChannels(_ chanLoc: Int) -> Int {
+        let channelsPerBit = [2, 2, 1, 1, 2, 2, 2, 1, 1]
+        return channelsPerBit.enumerated().reduce(0) { sum, item in
+            chanLoc & (1 << (8 - item.offset)) != 0 ? sum + item.element : sum
+        }
     }
 
     // MARK: - Utils

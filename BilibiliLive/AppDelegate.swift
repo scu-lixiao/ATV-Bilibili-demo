@@ -39,7 +39,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .moviePlayback)
+        // 告知系统本 App 会播放多声道内容（杜比全景声 / 5.1 音轨）
+        try? session.setSupportsMultichannelContent(true)
     }
 
     func showLogin() {
