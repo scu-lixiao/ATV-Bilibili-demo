@@ -128,6 +128,13 @@ enum WebRequest {
                 if errorCode != 0 {
                     let message = json["message"].stringValue
                     print(errorCode, message)
+
+                    // -352 为风控校验失败，清掉 WBI key 缓存，下次请求重新获取 key 与 w_webid
+                    if errorCode == -352 {
+                        Logger.warn("WbiSign error (code=-352), clearing cache. URL: \(url)")
+                        WbiKeysCache.shared.clear()
+                    }
+
                     complete?(.failure(.statusFail(code: errorCode, message: message)))
                     return
                 }
