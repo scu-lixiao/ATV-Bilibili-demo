@@ -67,6 +67,14 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         let bandwidth: Int
     }
 
+    /// DASH 的 bandwidth 是平均码率，而 HLS 的 BANDWIDTH 要求峰值码率。直接照搬会让 CoreMedia
+    /// 每拉一个分片都判定 "Segment exceeds specified bandwidth for variant" (-12318) 并自行上调估计，
+    /// ABR 从起播起就依据错误的数值决策。实测 B 站视频分片峰值约为平均的 1.5 倍（上游 #208），
+    /// 平均值仍通过 AVERAGE-BANDWIDTH 如实声明，稳态选流依据它
+    private static func peakBandwidth(forAverage average: Int) -> Int {
+        return Int(Double(average) * 1.5)
+    }
+
     private func reset() {
         playlists.removeAll()
         masterPlaylist = """
@@ -111,9 +119,11 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         for audio in variants {
             let audioAttribute = audio.map { "AUDIO=\"\($0.id)\"," } ?? ""
             let codecs = audio.map { "\(format.codecs),\($0.codecs)" } ?? format.codecs
-            let bandwidth = info.bandwidth + (audio?.bandwidth ?? 0)
+            // 音频接近恒定码率，只对视频部分按峰值声明
+            let averageBandwidth = info.bandwidth + (audio?.bandwidth ?? 0)
+            let bandwidth = Self.peakBandwidth(forAverage: info.bandwidth) + (audio?.bandwidth ?? 0)
             let content = """
-            #EXT-X-STREAM-INF:\(audioAttribute)CODECS="\(codecs)"\(supplementCodecs),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(bandwidth),VIDEO-RANGE=\(format.videoRange.rawValue)\(subtitlePlaceHolder)
+            #EXT-X-STREAM-INF:\(audioAttribute)CODECS="\(codecs)"\(supplementCodecs),RESOLUTION=\(info.width ?? 0)x\(info.height ?? 0),FRAME-RATE=\(framerate),BANDWIDTH=\(bandwidth),AVERAGE-BANDWIDTH=\(averageBandwidth),VIDEO-RANGE=\(format.videoRange.rawValue)\(subtitlePlaceHolder)
             \(uri)
 
             """
@@ -340,7 +350,7 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         // i-frame
         if let video = videos.last, let url = video.playableURLs.first {
             let media = """
-            #EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=\(video.bandwidth),RESOLUTION=\(video.width!)x\(video.height!),URI="\(URLs.customDashPrefix)\(videoInfo.count)"
+            #EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=\(Self.peakBandwidth(forAverage: video.bandwidth)),RESOLUTION=\(video.width!)x\(video.height!),URI="\(URLs.customDashPrefix)\(videoInfo.count)"
 
             """
             masterPlaylist.append(media)
@@ -348,6 +358,15 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         }
 
         masterPlaylist.append("\n#EXT-X-ENDLIST\n")
+
+        // 预取 AVPlayer 大概率首选的视频流与默认音轨的 sidx，与 master playlist 的加载并行，缩短起播链路。
+        // HDR 候选与杜比音轨在上面已经探测过，SidxDownloader 会直接复用缓存或等待进行中的下载
+        let prefetchTargets = [videoFormats.first?.video, audios.first?.info].compactMap { $0 }
+        for target in prefetchTargets {
+            Task.detached { [segmentInfoCache] in
+                _ = await segmentInfoCache.sidx(from: target)
+            }
+        }
 
         Logger.debug("masterPlaylist: \(masterPlaylist)")
     }
@@ -372,9 +391,9 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             return false
         }
 
-        DispatchQueue.main.async {
-            self.handleCustomPlaylistRequest(loadingRequest)
-        }
+        // 直接在 loader 串行队列处理，避免被主线程（弹幕渲染等）阻塞。
+        // playlist 相关状态在 setBilibili 中写好，且发生在 setDelegate 之前，这里只读
+        handleCustomPlaylistRequest(loadingRequest)
         return true
     }
 }
