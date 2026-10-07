@@ -137,7 +137,7 @@ extension SearchResultViewController {
         let userCell = UICollectionView.CellRegistration<UpCell, SearchResult.User> {
             $0.nameLabel.text = $2.uname
             $0.despLabel.text = $2.usign
-            $0.imageView.kf.setImage(with: $2.upic.addSchemeIfNeed(), options: .roundAvatar)
+            $0.imageView.kf.setImage(with: $2.upic.addSchemeIfNeed().biliAvatarThumbnail, options: .roundAvatar)
         }
         dataSource = UICollectionViewDiffableDataSource<SearchList, Item>(collectionView: collectionView) {
             collectionView, indexPath, item in

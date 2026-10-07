@@ -80,7 +80,7 @@ extension FollowUpsViewController: UICollectionViewDataSource {
         let data = follows[indexPath.item]
         cell.nameLabel.text = data.uname
         cell.despLabel.text = data.sign
-        cell.imageView.kf.setImage(with: data.face, options: .roundAvatar)
+        cell.imageView.kf.setImage(with: data.face.biliAvatarThumbnail, options: .roundAvatar)
         return cell
     }
 }

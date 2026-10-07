@@ -424,7 +424,7 @@ class VideoDetailViewController: UIViewController {
         upButton.title = data.ownerName
         followButton.isOn = data.Card.following
 
-        avatarImageView.kf.setImage(with: data.avatar, options: .roundAvatar)
+        avatarImageView.kf.setImage(with: data.avatar?.biliAvatarThumbnail, options: .roundAvatar)
 
         coverImageView.kf.setImage(with: data.pic) { [weak self] result in
             guard let self = self else { return }

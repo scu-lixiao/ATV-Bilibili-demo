@@ -29,7 +29,7 @@ class ReplyCell: UICollectionViewCell {
 
     func config(replay: Replys.Reply) {
         avatarImageView.kf.setImage(
-            with: URL(string: replay.member.avatar),
+            with: URL(string: replay.member.avatar)?.biliAvatarThumbnail,
             options: .roundAvatar
         )
         userNameLabel.text = replay.member.uname

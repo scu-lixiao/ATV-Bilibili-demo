@@ -80,7 +80,7 @@ class MenusViewController: UIViewController, BLTabBarContentVCProtocol {
         WebRequest.requestLoginInfo { [weak self] response in
             switch response {
             case let .success(json):
-                self?.avatarImageView.kf.setImage(with: URL(string: json["face"].stringValue))
+                self?.avatarImageView.kf.setImage(with: URL(string: json["face"].stringValue)?.biliAvatarThumbnail)
                 self?.userName = json["uname"].stringValue
             case .failure:
                 break

@@ -17,3 +17,21 @@ extension Array where Element == KingfisherOptionsInfoItem {
         ]
     }
 }
+
+extension URL {
+    /// B 站图床（*.hdslb.com）支持在路径后追加 `@{w}w_{h}h.jpg`，由服务端缩放后返回。
+    /// 头像原图可能非常大，下载原图再在本地降采样既费流量又占内存，过大时会解码崩溃（上游 #184 #218）。
+    /// 非 B 站图床或已带缩放参数的地址原样返回
+    func biliResized(width: Int, height: Int) -> URL {
+        guard let host, host.hasSuffix("hdslb.com"), !lastPathComponent.contains("@"),
+              var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
+        else { return self }
+        components.path += "@\(width)w_\(height)h.jpg"
+        return components.url ?? self
+    }
+
+    /// 头像统一请求 240px 缩略图
+    var biliAvatarThumbnail: URL {
+        biliResized(width: 240, height: 240)
+    }
+}

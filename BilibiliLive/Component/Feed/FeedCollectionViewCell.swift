@@ -135,7 +135,7 @@ class FeedCollectionViewCell: BLMotionCollectionViewCell {
         }
         if let avatar = data.avatar {
             avatarView.isHidden = false
-            avatarView.kf.setImage(with: avatar, options: .roundAvatar)
+            avatarView.kf.setImage(with: avatar.biliAvatarThumbnail, options: .roundAvatar)
         } else {
             avatarView.isHidden = true
         }
