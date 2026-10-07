@@ -31,12 +31,10 @@ bundle exec fastlane build_unsign_ipa    # Release, unsigned → ./BilbiliAtvDem
 ## Architecture
 
 ### Startup and navigation
-`AppDelegate` does five things at launch:
-- sets up `Logger`
-- restores cookies (`CookieHandler`)
-- starts the cast receiver (`BiliBiliUpnpDMR.shared.start()`)
-- refreshes the TV login token if it expires within 30 hours
-- sets the root view controller to `MenusViewController` (from the storyboard) or to `LoginViewController`
+The app uses the UIScene life cycle, which the tvOS 27 SDK requires (without it the app crashes at launch).
+
+- **`AppDelegate`** sets up `Logger`, caps the Kingfisher disk cache, restores cookies (`CookieHandler`) and starts the cast receiver (`BiliBiliUpnpDMR.shared.start()`). Its `window` forwards to the scene's window, and `showLogin`/`showTabBar` forward to `SceneDelegate`.
+- **`SceneDelegate`** creates the window, refreshes the TV login token if it expires within 30 hours, and sets the root view controller to `MenusViewController` (from the storyboard) or to `LoginViewController`.
 
 `MenusViewController` is the Apple TV+ style side menu. Its `cellModels` list defines the top-level pages, and `setViewController` swaps the content. Remote buttons are handled centrally in its `pressesEnded`:
 - **Menu, with the side menu hidden:** forwarded to the current page.
@@ -64,10 +62,15 @@ There are two separate stacks:
 ### Player: plugin architecture
 `CommonPlayerViewController` wraps `AVPlayerViewController`. It forwards lifecycle events (load, player/item change, start, pause, end, fail, dismiss) to every attached `CommonPlayerPlugin`, and each plugin can add overlay views and menu items. Every protocol method has a default no-op, so plugins implement only the hooks they need. Player features should be written as plugins added with `addPlugin`/`removePlugin`, not written into the view controller.
 
+Plugin cleanup rules:
+- Removing a plugin calls `playerWillCleanUp(playerVC:)` and then `playerDidCleanUp(player:)`. Use the first to cancel pending loads and remove the plugin's own overlay views; use the second to remove time observers.
+- A time observer can only be removed from the `AVPlayer` it was added to. Clear stored observers after removing them, or the next player change throws.
+- Dismissing the player (unless Picture in Picture is running) pauses and releases the `AVPlayer` and removes every plugin.
+
 - **On-demand video:** `VideoPlayerViewController(playInfo:)` owns a `VideoPlayerViewModel`, which is defined in `NewVideoPlayerViewModel.swift`.
   - The view model resolves the `cid` if it is missing, then fetches playurl, player info and detail concurrently. Bangumi (anime and other licensed shows) goes through the PGC endpoints, with an optional HK/TW area-unlock retry.
   - `generatePlayerPlugin` then builds the plugin set. It always includes play, danmaku, speed, UPnP, debug and playlist. It adds clips, SponsorBlock and the danmaku mask based on settings and data.
-  - "Play next" swaps only the `BVideoPlayPlugin`.
+  - "Play next" reloads the data and rebuilds the whole plugin set; `VideoPlayerViewController` calls `removeAllPlugins()` before adding the new set. Clips, SponsorBlock, the mask and the info plugin all depend on the video.
 - **Live streams:** `LivePlayerViewModel` uses `URLPlayPlugin` and `LiveDanMuProvider`. The provider reads live danmaku from a WebSocket feed with a custom binary header and brotli compression.
 
 ### DASH to HLS (how video plays)
