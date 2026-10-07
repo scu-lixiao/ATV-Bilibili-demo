@@ -33,7 +33,7 @@ enum WebRequest {
         static let favList = "https://api.bilibili.com/x/v3/fav/folder/created/list-all"
         static let favFolderCollectedList = "https://api.bilibili.com/x/v3/fav/folder/collected/list"
         static let favSeason = "https://api.bilibili.com/x/space/fav/season/list"
-        static let reportHistory = "https://api.bilibili.com/x/v2/history/report"
+        static let heartbeat = "https://api.bilibili.com/x/click-interface/web/heartbeat"
         static let upSpace = "https://api.bilibili.com/x/space/wbi/arc/search"
         static let like = "https://api.bilibili.com/x/web-interface/archive/like"
         static let likeStatus = "https://api.bilibili.com/x/web-interface/archive/has/like"
@@ -266,8 +266,9 @@ extension WebRequest {
         return info
     }
 
-    static func requestBangumiInfo(seasonID: Int) async throws -> BangumiSeasonInfo {
-        let res: BangumiSeasonInfo = try await request(url: "https://api.bilibili.com/pgc/web/season/section", parameters: ["season_id": seasonID], dataObj: "result")
+    /// 与 epid 版本同一接口，返回中带 user_status.progress，可用于续播
+    static func requestBangumiInfo(seasonID: Int) async throws -> BangumiInfo {
+        let res: BangumiInfo = try await request(url: "https://api.bilibili.com/pgc/view/web/season", parameters: ["season_id": seasonID], dataObj: "result")
         return res
     }
 
@@ -348,10 +349,38 @@ extension WebRequest {
         return res.medias ?? []
     }
 
-    static func reportWatchHistory(aid: Int, cid: Int, currentTime: Int) {
+    /// 上报观看进度。番剧需带上 type=4 与 epid / sid，否则历史记录里显示成普通视频、无法续播
+    static func reportWatchHistory(aid: Int, cid: Int, currentTime: Int, epid: Int? = nil, seasonId: Int? = nil, subType: Int? = nil) {
+        var parameters: [String: Any] = [
+            "aid": aid,
+            "cid": cid,
+            "played_time": currentTime,
+        ]
+
+        if epid ?? 0 > 0 || seasonId ?? 0 > 0 {
+            // 番剧类型标识
+            parameters["type"] = 4
+            parameters["sub_type"] = subType ?? 1
+
+            if let epid, epid > 0 {
+                parameters["epid"] = epid
+            }
+            if let seasonId, seasonId > 0 {
+                parameters["sid"] = seasonId
+            }
+
+            // Web 平台标识，用于正确识别番剧历史记录
+            parameters["mobi_app"] = "web"
+            parameters["device"] = "web"
+            parameters["platform"] = "web"
+        } else {
+            parameters["type"] = 3
+            parameters["sub_type"] = 0
+        }
+
         requestJSON(method: .post,
-                    url: EndPoint.reportHistory,
-                    parameters: ["aid": aid, "cid": cid, "progress": currentTime],
+                    url: EndPoint.heartbeat,
+                    parameters: parameters,
                     complete: nil)
     }
 
@@ -760,11 +789,6 @@ struct Replys: Codable, Hashable {
     let replies: [Reply]?
 }
 
-struct BangumiSeasonInfo: Codable {
-    let main_section: BangumiInfo
-    let section: [BangumiInfo]
-}
-
 struct BangumiInfo: Codable, Hashable {
     struct Episode: Codable, Hashable {
         let id: Int
@@ -773,9 +797,64 @@ struct BangumiInfo: Codable, Hashable {
         let cover: URL
         let long_title: String
         let title: String
+
+        enum CodingKeys: String, CodingKey {
+            case id, aid, cid, cover, long_title, title
+        }
+
+        init(from decoder: Swift.Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(Int.self, forKey: .id)
+            aid = try container.decode(Int.self, forKey: .aid)
+            cid = try container.decode(Int.self, forKey: .cid)
+            cover = try container.decode(URL.self, forKey: .cover)
+            long_title = try container.decodeIfPresent(String.self, forKey: .long_title) ?? ""
+            title = try container.decode(String.self, forKey: .title)
+        }
     }
 
+    struct UserStatus: Codable, Hashable {
+        struct Progress: Codable, Hashable {
+            let last_time: Int // 最后观看的时间进度，单位为秒
+            let last_ep_id: Int
+            let last_ep_index: String? // 最后观看的标题
+        }
+
+        let progress: Progress?
+
+        enum CodingKeys: String, CodingKey {
+            case progress
+        }
+
+        init(from decoder: Swift.Decoder) throws {
+            // 续播信息可有可无，格式异常时忽略，不能让整个番剧信息解析失败
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            progress = try? container.decodeIfPresent(Progress.self, forKey: .progress)
+        }
+    }
+
+    struct Section: Codable, Hashable {
+        let episodes: [Episode]
+    }
+
+    let type: Int // 1：番剧 2：电影 3：纪录片 4：国创 5：电视剧 7：综艺
+    let season_id: Int
     let episodes: [Episode] // 正片剧集列表
+    let user_status: UserStatus?
+    let section: [Section]? // 花絮、PV 等
+
+    /// 花絮、PV 等不在正片列表里，需要到 section 中查找
+    func findEpisodeById(_ epid: Int) -> Episode? {
+        if let epi = episodes.first(where: { $0.id == epid }) {
+            return epi
+        }
+        for sec in section ?? [] {
+            if let epi = sec.episodes.first(where: { $0.id == epid }) {
+                return epi
+            }
+        }
+        return nil
+    }
 }
 
 struct BangumiSeasonView: Codable, Hashable {

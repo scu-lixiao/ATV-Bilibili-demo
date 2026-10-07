@@ -192,7 +192,7 @@ class FeedCollectionViewController: UIViewController {
 
             viewModel.playAction = { [weak self] data in
                 guard let self = self else { return }
-                let player = VideoPlayerViewController(playInfo: PlayInfo(aid: data.id, cid: data.cid, epid: 0, isBangumi: false))
+                let player = VideoPlayerViewController(playInfo: PlayInfo(aid: data.id, cid: data.cid, epid: 0))
                 self.present(player, animated: true)
             }
 

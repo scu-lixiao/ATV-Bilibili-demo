@@ -110,6 +110,10 @@ class VideoDetailViewController: UIViewController {
     private var seasonId = 0
     private var aid = 0
     private var cid = 0
+    /// 续播信息：番剧来自 user_status.progress，普通视频来自播放器信息接口
+    private var lastPlayCid: Int?
+    private var playTimeInSecond: Int?
+    private var subType: Int?
     private var data: VideoDetail?
     @IBOutlet var scrollView: UIScrollView!
     private var didSentCoins = 0 {
@@ -278,13 +282,28 @@ class VideoDetailViewController: UIViewController {
         loadingView.makeConstraintsBindToCenterOfSuperview()
     }
 
+    private func makePlayInfo(aid: Int, cid: Int, epid: Int?) -> PlayInfo {
+        PlayInfo(aid: aid, cid: cid, epid: epid, seasonId: isBangumi ? seasonId : nil, subType: subType, lastPlayCid: lastPlayCid, playTimeInSecond: playTimeInSecond)
+    }
+
+    /// 连播序列：番剧每一集的 aid 不同（存放在 VideoPage.page），且需要带上 epid
+    private func makePlaySequence(from pages: ArraySlice<VideoPage>) -> [PlayInfo] {
+        pages.map { PlayInfo(aid: isBangumi ? $0.page : aid, cid: $0.cid, epid: $0.epid, seasonId: isBangumi ? seasonId : nil, subType: subType) }
+    }
+
+    private func updatePlayProgressIfNeeded(progress: BangumiInfo.UserStatus.Progress?, episode: BangumiInfo.Episode) {
+        guard let progress, progress.last_ep_id == episode.id else { return }
+        playTimeInSecond = progress.last_time
+        lastPlayCid = episode.cid
+    }
+
     func present(from vc: UIViewController, direatlyEnterVideo: Bool = Settings.direatlyEnterVideo) {
         if !direatlyEnterVideo {
             vc.present(self, animated: true)
         } else {
             vc.present(self, animated: false) { [weak self] in
                 guard let self else { return }
-                let player = VideoPlayerViewController(playInfo: PlayInfo(aid: self.aid, cid: self.cid, epid: self.epid, isBangumi: self.isBangumi))
+                let player = VideoPlayerViewController(playInfo: self.makePlayInfo(aid: self.aid, cid: self.cid, epid: self.epid))
                 self.present(player, animated: true)
             }
         }
@@ -311,18 +330,26 @@ class VideoDetailViewController: UIViewController {
             if seasonId > 0 {
                 isBangumi = true
                 let info = try await WebRequest.requestBangumiInfo(seasonID: seasonId)
-                if let epi = info.main_section.episodes.first ?? info.section.first?.episodes.first {
+                subType = info.type
+                // 从上次看到的那一集开始
+                let lastEpId = info.user_status?.progress?.last_ep_id
+                if let epi = info.episodes.first(where: { $0.id == lastEpId }) ?? info.episodes.first ?? info.section?.first?.episodes.first {
                     aid = epi.aid
                     cid = epi.cid
                     epid = epi.id
+                    updatePlayProgressIfNeeded(progress: info.user_status?.progress, episode: epi)
                 }
-                pages = info.main_section.episodes.map({ VideoPage(cid: $0.cid, page: $0.aid, epid: $0.id, from: "", part: $0.title + " " + $0.long_title) })
+                pages = info.episodes.map({ VideoPage(cid: $0.cid, page: $0.aid, epid: $0.id, from: "", part: $0.title + " " + $0.long_title) })
             } else if epid > 0 {
                 isBangumi = true
                 let info = try await WebRequest.requestBangumiInfo(epid: epid)
-                if let epi = info.episodes.first(where: { $0.id == epid }) ?? info.episodes.first {
+                seasonId = info.season_id
+                subType = info.type
+                // 花絮、PV 不在正片列表里，之前找不到时会退回播放第一集
+                if let epi = info.findEpisodeById(epid) ?? info.episodes.first {
                     aid = epi.aid
                     cid = epi.cid
+                    updatePlayProgressIfNeeded(progress: info.user_status?.progress, episode: epi)
                 } else {
                     throw NSError(domain: "get epi fail", code: -1)
                 }
@@ -335,7 +362,22 @@ class VideoDetailViewController: UIViewController {
                 isBangumi = true
                 epid = id
                 let info = try await WebRequest.requestBangumiInfo(epid: epid)
+                seasonId = info.season_id
+                subType = info.type
                 pages = info.episodes.map({ VideoPage(cid: $0.cid, page: $0.aid, epid: $0.id, from: "", part: $0.title + " " + $0.long_title) })
+                if let epi = info.findEpisodeById(epid) {
+                    updatePlayProgressIfNeeded(progress: info.user_status?.progress, episode: epi)
+                }
+            }
+            if !isBangumi, let playerInfo = try? await WebRequest.requestPlayerInfo(aid: aid, cid: cid == 0 ? data.View.cid : cid) {
+                // 多 P 视频未指定分 P 时，从上次看到的分 P 开始
+                if cid == 0 {
+                    cid = playerInfo.last_play_cid > 0 ? playerInfo.last_play_cid : data.View.cid
+                }
+                if playerInfo.last_play_cid == cid {
+                    playTimeInSecond = playerInfo.playTimeInSecond
+                    lastPlayCid = playerInfo.last_play_cid
+                }
             }
             update(with: data)
         } catch let err {
@@ -424,6 +466,10 @@ class VideoDetailViewController: UIViewController {
         upButton.title = data.ownerName
         followButton.isOn = data.Card.following
 
+        if Settings.continuePlay {
+            playButton.title = lastPlayCid != nil && lastPlayCid == cid ? "继续播放" : "播放"
+        }
+
         avatarImageView.kf.setImage(with: data.avatar?.biliAvatarThumbnail, options: .roundAvatar)
 
         coverImageView.kf.setImage(with: data.pic) { [weak self] result in
@@ -502,10 +548,10 @@ class VideoDetailViewController: UIViewController {
     }
 
     @IBAction func actionPlay(_ sender: Any) {
-        let player = VideoPlayerViewController(playInfo: PlayInfo(aid: aid, cid: cid, epid: epid, isBangumi: isBangumi))
+        let player = VideoPlayerViewController(playInfo: makePlayInfo(aid: aid, cid: cid, epid: epid))
         player.data = data
         if pages.count > 0, let index = pages.firstIndex(where: { $0.cid == cid }) {
-            let seq = pages.dropFirst(index).map({ PlayInfo(aid: aid, cid: $0.cid, epid: $0.epid, isBangumi: isBangumi) })
+            let seq = makePlaySequence(from: pages.dropFirst(index))
             if seq.count > 0 {
                 let nextProvider = VideoNextProvider(seq: seq)
                 player.nextProvider = nextProvider
@@ -624,10 +670,10 @@ extension VideoDetailViewController: UICollectionViewDelegate {
         switch collectionView {
         case pageCollectionView:
             let page = pages[indexPath.item]
-            let player = VideoPlayerViewController(playInfo: PlayInfo(aid: isBangumi ? page.page : aid, cid: page.cid, epid: page.epid, isBangumi: isBangumi))
+            let player = VideoPlayerViewController(playInfo: makePlayInfo(aid: isBangumi ? page.page : aid, cid: page.cid, epid: page.epid))
             player.data = isBangumi ? nil : data
 
-            let seq = pages.dropFirst(indexPath.item).map({ PlayInfo(aid: aid, cid: $0.cid, isBangumi: isBangumi) })
+            let seq = makePlaySequence(from: pages.dropFirst(indexPath.item))
             if seq.count > 0 {
                 let nextProvider = VideoNextProvider(seq: seq)
                 player.nextProvider = nextProvider
