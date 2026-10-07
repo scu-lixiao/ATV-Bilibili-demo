@@ -11,6 +11,7 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
     private weak var playerVC: AVPlayerViewController?
     private var playerDelegate: BilibiliVideoResourceLoaderDelegate?
     private let playData: PlayerDetailData
+    private var loadTask: Task<Void, Never>?
 
     init(detailData: PlayerDetailData) {
         playData = detailData
@@ -20,9 +21,24 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
         self.playerVC = playerVC
         playerVC.player = nil
         playerVC.appliesPreferredDisplayCriteriaAutomatically = Settings.contentMatch
-        Task {
-            try? await playmedia(urlInfo: playData.videoPlayURLInfo, playerInfo: playData.playerInfo)
+        loadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await playmedia(urlInfo: playData.videoPlayURLInfo, playerInfo: playData.playerInfo)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                Logger.warn("[player] prepare media failed: \(error)")
+                (self.playerVC?.parent as? CommonPlayerViewController)?.showErrorAlertAndExit(message: String(describing: error))
+            }
         }
+    }
+
+    func playerWillCleanUp(playerVC: AVPlayerViewController) {
+        // 起播前要先探测 sidx / HDR 格式，期间退出播放时取消，避免之后再创建 AVPlayer 在后台出声
+        loadTask?.cancel()
+        loadTask = nil
     }
 
     func playerWillStart(player: AVPlayer) {
@@ -48,6 +64,7 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
         self.playerDelegate = playerDelegate
         // 会先下载并解析 HDR / 杜比视界流的初始化分段，以生成准确的 CODECS 与 VIDEO-RANGE
         await playerDelegate.setBilibili(info: urlInfo, subtitles: playerInfo?.subtitle?.subtitles ?? [], aid: playData.aid)
+        try Task.checkCancellation()
         if Settings.contentMatchOnlyInHDR {
             if !playerDelegate.isHDR {
                 playerVC?.appliesPreferredDisplayCriteriaAutomatically = false
@@ -58,6 +75,7 @@ class BVideoPlayPlugin: NSObject, CommonPlayerPlugin {
         if !playable {
             throw "加载资源失败"
         }
+        try Task.checkCancellation()
         await prepare(toPlay: asset)
     }
 

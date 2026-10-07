@@ -69,10 +69,8 @@ class VideoPlayerViewController: CommonPlayerViewController {
                 break
             }
         } receiveValue: { [weak self] plugins in
+            self?.removeAllPlugins()
             plugins.forEach { self?.addPlugin(plugin: $0) }
-        }.store(in: &cancelable)
-        viewModel.onPluginRemove.sink { [weak self] in
-            self?.removePlugin(plugin: $0)
         }.store(in: &cancelable)
         viewModel.onExit = { [weak self] in
             self?.dismiss(animated: true)

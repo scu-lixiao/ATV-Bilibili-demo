@@ -22,8 +22,8 @@ struct PlayerDetailData {
 }
 
 class VideoPlayerViewModel {
+    /// 每次发送的是一整组插件，接收方需先移除旧插件再添加（连播时整组重建）
     var onPluginReady = PassthroughSubject<[CommonPlayerPlugin], String>()
-    var onPluginRemove = PassthroughSubject<CommonPlayerPlugin, Never>()
     var onExit: (() -> Void)?
     var nextProvider: VideoNextProvider?
 
@@ -32,8 +32,6 @@ class VideoPlayerViewModel {
                                                    enableDanmuRemoveDup: Settings.enableDanmuRemoveDup)
     private var videoDetail: VideoDetail?
     private var cancellable = Set<AnyCancellable>()
-    private var playPlugin: BVideoPlayPlugin?
-    private var infoPlugin: BVideoInfoPlugin?
 
     init(playInfo: PlayInfo) {
         self.playInfo = playInfo
@@ -120,55 +118,19 @@ class VideoPlayerViewModel {
         }
     }
 
+    /// 连播：重新加载整组插件。片头片尾、空降助手、蒙版、投屏时长等都和视频绑定，
+    /// 只换播放插件会让它们沿用上一个视频的数据
     private func playNext(newPlayInfo: PlayInfo) {
         playInfo = newPlayInfo
-
-        if let playPlugin {
-            Logger.debug("playNext: remove previous playPlugin: \(playPlugin)")
-            onPluginRemove.send(playPlugin)
-        }
-
         Task {
-            do {
-                // 加载下一个视频数据
-                let data = try await loadVideoInfo()
-                // 更新视频标题、副标题等显示组件
-                updateInfoPlugin(data)
-                // 初始化下一个视频播放器组件
-                let player = BVideoPlayPlugin(detailData: data)
-                // 保存新播放器引用以便后续删除
-                playPlugin = player
-                // 呈现新播放器
-                onPluginReady.send([player])
-            } catch let err {
-                onPluginReady.send(completion: .failure(err.localizedDescription))
-            }
-        }
-    }
-
-    private func updateInfoPlugin(_ data: PlayerDetailData) {
-        if let detail = data.detail, let infoPlugin {
-            // 默认视频标题作主标题 up主用户名作副标题
-            var title = detail.title
-            var subTitle = detail.ownerName
-            // 分页播放时则以分页标题作主标题 up主用户名+视频标题作副标题
-            let pages = detail.View.pages ?? []
-            if pages.count > 1, let index = pages.firstIndex(where: { $0.cid == playInfo.cid }) {
-                let page = pages[index]
-                title = page.part
-                subTitle += "·\(detail.title)"
-            }
-            infoPlugin.title = title
-            infoPlugin.subTitle = subTitle
-            infoPlugin.desp = detail.View.desc
-            infoPlugin.pic = detail.pic
-            infoPlugin.viewPoints = data.playerInfo?.view_points
-            Logger.debug("updateInfoPlugin: title: \(title) subTitle: \(subTitle)")
+            await load()
         }
     }
 
     @MainActor private func generatePlayerPlugin(_ data: PlayerDetailData) async -> [CommonPlayerPlugin] {
-        let player = BVideoPlayPlugin(detailData: data)
+        // 上一组插件的订阅随插件一起作废
+        cancellable.removeAll()
+        let playPlugin = BVideoPlayPlugin(detailData: data)
         let danmu = DanmuViewPlugin(provider: danmuProvider)
         let upnp = BUpnpPlugin(duration: data.detail?.View.duration)
         let debug = DebugPlugin()
@@ -187,9 +149,7 @@ class VideoPlayerViewModel {
             playNext(newPlayInfo: info)
         }
 
-        playPlugin = player
-
-        var plugins: [CommonPlayerPlugin] = [player, danmu, playSpeed, upnp, debug, playlist]
+        var plugins: [CommonPlayerPlugin] = [playPlugin, danmu, playSpeed, upnp, debug, playlist]
 
         if let clips = data.clips {
             let clip = BVideoClipsPlugin(clipInfos: clips)
@@ -214,10 +174,20 @@ class VideoPlayerViewModel {
             }
         }
 
-        infoPlugin = BVideoInfoPlugin()
-        updateInfoPlugin(data)
-        if let infoPlugin {
+        if let detail = data.detail {
+            // 默认视频标题作主标题 up主用户名作副标题
+            var title = detail.title
+            var subTitle = detail.ownerName
+            // 分页播放时则以分页标题作主标题 up主用户名+视频标题作副标题
+            let pages = detail.View.pages ?? []
+            if pages.count > 1, let index = pages.firstIndex(where: { $0.cid == data.cid }) {
+                let page = pages[index]
+                title = page.part
+                subTitle += "·\(detail.title)"
+            }
+            let infoPlugin = BVideoInfoPlugin(title: title, subTitle: subTitle, desp: detail.View.desc, pic: detail.pic, viewPoints: data.playerInfo?.view_points)
             plugins.append(infoPlugin)
+            Logger.debug("infoPlugin: title: \(title) subTitle: \(subTitle)")
         }
 
         return plugins

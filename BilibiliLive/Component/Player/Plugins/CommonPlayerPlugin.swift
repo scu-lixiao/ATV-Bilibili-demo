@@ -14,6 +14,8 @@ protocol CommonPlayerPlugin: NSObject {
 
     func playerDidLoad(playerVC: AVPlayerViewController)
     func playerDidDismiss(playerVC: AVPlayerViewController)
+    /// 插件被移除（退出播放、连播切到下一个视频）前调用，用于取消未完成的加载、移除自己添加的浮层视图
+    func playerWillCleanUp(playerVC: AVPlayerViewController)
     func playerDidChange(player: AVPlayer)
     func playerItemDidChange(playerItem: AVPlayerItem)
 
@@ -38,6 +40,7 @@ extension CommonPlayerPlugin {
 
     func playerDidLoad(playerVC: AVPlayerViewController) {}
     func playerDidDismiss(playerVC: AVPlayerViewController) {}
+    func playerWillCleanUp(playerVC: AVPlayerViewController) {}
     func playerDidChange(player: AVPlayer) {}
     func playerItemDidChange(playerItem: AVPlayerItem) {}
 }

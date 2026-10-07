@@ -79,6 +79,12 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         debugView?.isHidden = true
     }
 
+    func playerWillCleanUp(playerVC: AVPlayerViewController) {
+        stopDebug()
+        debugView?.removeFromSuperview()
+        debugView = nil
+    }
+
     private func fetchDebugInfo() -> String {
         let bitrateStr: (Double) -> String = {
             bit in

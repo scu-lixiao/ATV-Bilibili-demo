@@ -14,7 +14,13 @@ class CommonPlayerViewController: UIViewController {
     private var observations = Set<NSKeyValueObservation>()
     private var rateObserver: NSKeyValueObservation?
     private var statusObserver: NSKeyValueObservation?
+    private var playToEndObserver: Any?
     private var isEnd = false
+    private var isRestoringFromPip = false
+
+    deinit {
+        cleanUpPlayerOnExit(force: true)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -25,7 +31,9 @@ class CommonPlayerViewController: UIViewController {
         playerVC.allowsPictureInPicturePlayback = true
         playerVC.delegate = self
 
-        let playerObservation = playerVC.observe(\.player) { [weak self] vc, obs in
+        // 必须带 .old，否则 obs.oldValue 恒为 nil，playerDidCleanUp 永远不会触发
+        let playerObservation = playerVC.observe(\.player, options: [.old, .new]) { [weak self] vc, obs in
+            Logger.debug("player changed: \(String(describing: obs.oldValue)) -> \(String(describing: obs.newValue))")
             if let oldPlayer = obs.oldValue, let oldPlayer {
                 self?.activePlugins.forEach { $0.playerDidCleanUp(player: oldPlayer) }
             }
@@ -38,6 +46,7 @@ class CommonPlayerViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         activePlugins.forEach { $0.playerDidDismiss(playerVC: playerVC) }
+        cleanUpPlayerOnExit()
     }
 
     override var preferredFocusEnvironments: [UIFocusEnvironment] {
@@ -57,7 +66,22 @@ class CommonPlayerViewController: UIViewController {
     }
 
     func removePlugin(plugin: CommonPlayerPlugin) {
+        let removingPlugins = activePlugins.filter { $0 == plugin }
+        removingPlugins.forEach { $0.playerWillCleanUp(playerVC: playerVC) }
+        if let player = playerVC.player {
+            removingPlugins.forEach { $0.playerDidCleanUp(player: player) }
+        }
         activePlugins.removeAll { $0 == plugin }
+    }
+
+    func removeAllPlugins() {
+        guard !activePlugins.isEmpty else { return }
+        activePlugins.forEach { $0.playerWillCleanUp(playerVC: playerVC) }
+        if let player = playerVC.player {
+            Logger.debug("removeAllPlugins: clean up player: \(player)")
+            activePlugins.forEach { $0.playerDidCleanUp(player: player) }
+        }
+        activePlugins.removeAll()
     }
 
     func playerDidEnd(player: AVPlayer) {}
@@ -80,6 +104,31 @@ class CommonPlayerViewController: UIViewController {
         }
         playerVC.transportBarCustomMenuItems = menus
     }
+
+    /// 退出播放时停止并释放 AVPlayer，避免退出后声音仍在继续；画中画进行中时保留
+    private func cleanUpPlayerOnExit(force: Bool = false) {
+        let isPictureInPictureRunning = PipRecorder.shared.playingPipViewController.contains { $0.playerVC == playerVC }
+        let shouldCleanUp = force || ((isBeingDismissed || isMovingFromParent || navigationController?.isBeingDismissed == true) && !isPictureInPictureRunning)
+        guard shouldCleanUp else { return }
+
+        cleanUpObserver()
+
+        let player = playerVC.player
+        player?.pause()
+        // 插件可能还在准备第一个 AVPlayer，即使 playerVC.player 尚未设置也要执行清理
+        removeAllPlugins()
+        player?.replaceCurrentItem(with: nil)
+        playerVC.player = nil
+    }
+
+    private func cleanUpObserver() {
+        rateObserver = nil
+        statusObserver = nil
+        if let playToEndObserver {
+            NotificationCenter.default.removeObserver(playToEndObserver)
+        }
+        playToEndObserver = nil
+    }
 }
 
 extension CommonPlayerViewController {
@@ -97,7 +146,7 @@ extension CommonPlayerViewController {
             }
             updateMenus()
         } else {
-            rateObserver = nil
+            cleanUpObserver()
         }
     }
 
@@ -126,8 +175,11 @@ extension CommonPlayerViewController {
                 break
             }
         }
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] note in
+        // block 形式的观察者只能用返回的 token 移除，removeObserver(self, ...) 移除不掉
+        if let playToEndObserver {
+            NotificationCenter.default.removeObserver(playToEndObserver)
+        }
+        playToEndObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] note in
             guard let self, let player = playerVC.player else { return }
             isEnd = true
             activePlugins.forEach { $0.playerDidEnd(player: player) }
@@ -152,16 +204,23 @@ extension CommonPlayerViewController: AVPlayerViewControllerDelegate {
     }
 
     func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+        isRestoringFromPip = false
         PipRecorder.shared.playingPipViewController.append(self)
     }
 
     func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
         PipRecorder.shared.playingPipViewController.removeAll { $0.playerVC == playerViewController }
+        if !isRestoringFromPip {
+            // 用户点 ✕ 关闭画中画，清理资源
+            cleanUpPlayerOnExit(force: true)
+        }
+        isRestoringFromPip = false
     }
 
     @objc func playerViewController(_ playerViewController: AVPlayerViewController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void)
     {
+        isRestoringFromPip = true
         let presentedViewController = UIViewController.topMostViewController()
         guard let containerPlayer = PipRecorder.shared.playingPipViewController.first(where: { $0.playerVC == playerViewController }) else {
             completionHandler(false)
