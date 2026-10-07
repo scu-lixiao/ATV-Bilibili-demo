@@ -96,7 +96,9 @@ enum ApiRequest {
             switch response.result {
             case let .success(data):
                 let json = JSON(data)
-                print(json)
+                #if DEBUG
+                    print(json)
+                #endif
                 let errorCode = json["code"].intValue
                 if errorCode != 0 {
                     if errorCode == -101 {
