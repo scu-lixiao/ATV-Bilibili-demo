@@ -161,18 +161,19 @@ struct AreaLiveRoom: DisplayData, Codable, PlayableData {
     let title: String
     let roomid: Int
     let uname: String
-    let system_cover: URL
+    // 接口可能返回空字符串，按 URL 解码会让整页列表加载失败
+    let system_cover: String
     let face: URL?
     let user_cover: URL?
     let parent_name: String
     let area_name: String
     var ownerName: String { uname }
-    var pic: URL? { system_cover }
+    var pic: URL? { URL(string: system_cover) }
     var avatar: URL? { face }
     var cid: Int { 0 }
     var aid: Int { 0 }
 
     func toLiveRoom() -> LiveRoom {
-        return LiveRoom(title: title, room_id: roomid, uname: uname, keyframe: system_cover.absoluteString, face: face, cover_from_user: user_cover)
+        return LiveRoom(title: title, room_id: roomid, uname: uname, keyframe: system_cover.isEmpty ? nil : system_cover, face: face, cover_from_user: user_cover)
     }
 }
