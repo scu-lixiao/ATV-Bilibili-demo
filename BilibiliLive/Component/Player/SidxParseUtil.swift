@@ -32,40 +32,57 @@ enum SidxParseUtil {
     }
 
     static func processIndexData(data: Data) -> Sidx? {
+        let count = UInt64(data.count)
         var offset: UInt64 = 0
-        var typeString = ""
-        var sidx: Sidx?
-        while offset < data.count - 8 {
-            print("offset:", offset)
+        // 逐个 box 遍历并整体跳过非 sidx 的 box。之前只跳过 8 字节头部，会把 box 内容当成 box 头继续解析，
+        // 得到错误的分片表（表现为无限加载）或越界崩溃；version 1 的 64 位字段也按 32 位读错
+        while offset + 8 <= count {
+            let boxStart = offset
             var size = UInt64(data.getUint32(offset: &offset))
-            let typeArr = data.getUint32(offset: &offset).toUInt8s
-            typeString = String(bytes: typeArr, encoding: .utf8)!
-            print(size, typeString)
-            switch typeString {
-            case "sidx":
-                if size == 1 {
-                    size = data.getValue(type: UInt64.self, offset: &offset)
-                }
-                sidx = processSIDX(data: Data(data[Data.Index(offset)..<Int(size)]))
-                offset += (size - 8)
-            default: break
+            let type = String(bytes: data.getUint32(offset: &offset).toUInt8s, encoding: .ascii) ?? ""
+            if size == 1 {
+                // 64 位 largesize
+                guard offset + 8 <= count else { return nil }
+                size = data.getValue(type: UInt64.self, offset: &offset).bigEndian
+            } else if size == 0 {
+                // box 一直延伸到数据末尾
+                size = count - boxStart
             }
+            // 越过数据末尾的 box 之后不可能再有 sidx
+            guard size >= offset - boxStart, size <= count - boxStart else { return nil }
+            if type == "sidx" {
+                return processSIDX(data: Data(data[Int(offset)..<Int(boxStart + size)]))
+            }
+            offset = boxStart + size
         }
-        return sidx
+        return nil
     }
 
-    private static func processSIDX(data: Data) -> Sidx {
+    private static func processSIDX(data: Data) -> Sidx? {
+        guard data.count >= 4 else { return nil }
         var offset: UInt64 = 0
-        _ = data.getUint8(offset: &offset) // version
-        _ = data.getUint8(offset: &offset) // none
-        _ = data.getUint8(offset: &offset) // none
-        _ = data.getUint8(offset: &offset) // none
+        let version = data.getUint8(offset: &offset)
+        _ = data.getUint8(offset: &offset) // flags
+        _ = data.getUint8(offset: &offset) // flags
+        _ = data.getUint8(offset: &offset) // flags
+
+        // version 0: 32 位 earliest_presentation_time / first_offset，version 1: 64 位
+        let timeFieldsSize = version == 0 ? 8 : 16
+        guard data.count >= 8 + timeFieldsSize + 4 else { return nil }
         _ = data.getUint32(offset: &offset) // refID
         let timescale = data.getUint32(offset: &offset)
-        let earliest_presentation_time = data.getUint32(offset: &offset)
-        let first_offset = data.getUint32(offset: &offset)
-        _ = data.getValue(type: UInt16.self, offset: &offset).bigEndian // reversed
+        let earliest_presentation_time: UInt64
+        let first_offset: UInt64
+        if version == 0 {
+            earliest_presentation_time = UInt64(data.getUint32(offset: &offset))
+            first_offset = UInt64(data.getUint32(offset: &offset))
+        } else {
+            earliest_presentation_time = data.getValue(type: UInt64.self, offset: &offset).bigEndian
+            first_offset = data.getValue(type: UInt64.self, offset: &offset).bigEndian
+        }
+        _ = data.getValue(type: UInt16.self, offset: &offset).bigEndian // reserved
         let reference_count = data.getValue(type: UInt16.self, offset: &offset).bigEndian
+        guard UInt64(data.count) >= offset + UInt64(reference_count) * 12 else { return nil }
 
         var infos = [Sidx.SegmentInfo]()
         for _ in 0..<reference_count {
@@ -82,7 +99,7 @@ enum SidxParseUtil {
             infos.append(info)
         }
 
-        return Sidx(timescale: Int(timescale), firstOffset: Int(first_offset), earliestPresentationTime: Int(earliest_presentation_time), segments: infos)
+        return Sidx(timescale: Int(timescale), firstOffset: Int(clamping: first_offset), earliestPresentationTime: Int(clamping: earliest_presentation_time), segments: infos)
     }
 }
 
