@@ -40,7 +40,7 @@ class BVideoInfoPlugin: NSObject, CommonPlayerPlugin {
                 group.addTask {
                     if let pic = viewPoint.imgUrl?.addSchemeIfNeed(),
                        let result = try? await KingfisherManager.shared.retrieveImage(
-                           with: Kingfisher.ImageResource(downloadURL: pic),
+                           with: Kingfisher.KF.ImageResource(downloadURL: pic),
                            options: [
                                .onlyLoadFirstFrame,
                                .processor(DownsamplingImageProcessor(size: CGSize(width: 320, height: 180))),
