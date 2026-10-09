@@ -45,6 +45,8 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
     private var aid = 0
     private(set) var httpPort = 0
     private(set) var isHDR = false
+    /// 首选 HDR / 杜比视界流对应的显示模式要求，起播前用它切换电视（见 HDRDisplaySwitcher）
+    private(set) var hdrDisplayCriteria: AVDisplayCriteria?
     deinit {
         httpServer.stop()
     }
@@ -93,10 +95,12 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
             isHDR = true
         }
         var framerate = info.frame_rate ?? "25"
-        if info.id == HLSVideoFormat.Quality.hdr {
-            if let value = Double(framerate), value <= 30 {} else {
-                framerate = "30"
-            }
+        var format = format
+        // Apple TV 4K（第一代）实测：FRAME-RATE 超过 30 的杜比视界档位，电视切到杜比视界后仍被 AVPlayer 排除，只播 SDR 档位；
+        // HDR10 一直按 30 声明（上游做法），60fps 片源能选上 HDR 档位。杜比视界的 level 同样按 30fps 声明
+        if format.isHDR, (Double(framerate) ?? .infinity) > 30 {
+            framerate = "30"
+            format = format.declaredAt30fps(width: info.width, height: info.height)
         }
         if let value = Double(framerate), value >= 60 {
             framerate = "60"
@@ -281,6 +285,8 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
         playInfo = info
         self.aid = aid
         reset()
+        // 视频本身提供的画质：用于区分「B 站没有 HDR / 杜比视界版本」与「有但没返回对应的流」
+        Logger.debug("playurl accept quality: \(info.accept_quality) \(info.accept_description), dolby audio: \(info.dash.dolby?.audio?.isEmpty == false)")
         hasSubtitle = subtitles.count > 0
         var videos = info.dash.video
         if Settings.preferAvc {
@@ -308,6 +314,14 @@ class BilibiliVideoResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelega
                                                 format: probedFormats[video])
             Logger.debug("video \(video.id) \(video.codecs) -> \(format.codecs) \(format.supplementalCodecs ?? "") \(format.videoRange.rawValue) (\(format.dynamicRangeDescription), probed: \(format.isProbed))")
             return (video: video, format: format)
+        }
+        // 主播放列表按画质从高到低排列，显示模式按其中第一条 HDR 流请求
+        if let hdr = videoFormats.first(where: { $0.format.isHDR && !videoCodecBlackList.contains($0.video.codecs) }) {
+            hdrDisplayCriteria = HDRDisplaySwitcher.criteria(for: hdr.format,
+                                                             probe: probedFormats[hdr.video],
+                                                             width: hdr.video.width ?? 3840,
+                                                             height: hdr.video.height ?? 2160,
+                                                             frameRate: hdr.video.frame_rate.flatMap { Double($0) } ?? 60)
         }
 
         var audios = [(info: VideoPlayURLInfo.DashInfo.DashMediaInfo, groupID: String, channels: String)]()

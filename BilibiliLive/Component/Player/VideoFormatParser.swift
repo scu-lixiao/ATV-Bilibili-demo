@@ -34,6 +34,9 @@ struct VideoFormatInfo: Hashable {
     /// 是否带有 mdcv / clli（HDR10 静态元数据）
     var hasMasteringDisplayInfo = false
     var hasContentLightLevel = false
+    /// sample entry 中的 hvcC / dvcC / dvvC 等配置 box（不含 box 头），键为 box 类型。
+    /// 起播前切换电视显示模式时用它们构造 CMFormatDescription，与 AVPlayer 从初始化分段得到的一致
+    var configurationAtoms: [String: Data] = [:]
 }
 
 /// 从音频初始化分段中解析出的格式信息
@@ -152,12 +155,14 @@ enum MP4FormatParser {
         for child in boxes(in: Array(payload[visualSampleEntryHeaderSize...])) {
             switch child.type {
             case "hvcC":
+                info.configurationAtoms[child.type] = Data(child.payload)
                 if let hvcc = parseHVCC(child.payload) {
                     info.hevcCodec = hvcc.codec
                     info.bitDepth = hvcc.bitDepth
                     spsColour = hvcc.spsColour
                 }
             case "dvcC", "dvvC", "dvwC":
+                info.configurationAtoms[child.type] = Data(child.payload)
                 info.dolbyVision = parseDolbyVisionConfig(child.payload)
             case "colr":
                 if let colour = parseColr(child.payload) {
@@ -581,13 +586,33 @@ struct HLSVideoFormat: Equatable {
     var codecs: String
     var supplementalCodecs: String?
     var videoRange: VideoRange
-    /// 用于调试显示的杜比视界 Profile，如 "5"、"8.4"
-    var dolbyVisionProfile: String?
+    /// 按杜比视界声明时的 Profile / level / 基础层兼容 ID
+    var dolbyVision: VideoFormatInfo.DolbyVision?
     /// 是否由初始化分段解析得到（否则为按接口字段推断）
     var isProbed = false
 
+    /// 用于调试显示的杜比视界 Profile，如 "5"、"8.4"
+    var dolbyVisionProfile: String? {
+        guard let dolbyVision else { return nil }
+        return dolbyVision.profile == 5 ? "5" : "\(dolbyVision.profile).\(dolbyVision.compatibilityID)"
+    }
+
     var isHDR: Bool {
         videoRange != .sdr || dolbyVisionProfile != nil
+    }
+
+    /// 主播放列表按 30fps 声明 HDR 档位时，杜比视界 level 也换成同分辨率 30fps 对应的 level；
+    /// dolbyVision 中保留实际 level，切换显示模式时使用
+    func declaredAt30fps(width: Int?, height: Int?) -> HLSVideoFormat {
+        guard let dolbyVision else { return self }
+        let level = min(dolbyVision.level, Self.dolbyVisionLevel(width: width, height: height, frameRate: 30))
+        var result = self
+        if dolbyVision.profile == 5 {
+            result.codecs = String(format: "dvh1.05.%02d", level)
+        } else if let brand = supplementalCodecs?.split(separator: "/").last {
+            result.supplementalCodecs = String(format: "dvh1.%02d.%02d/", dolbyVision.profile, level) + brand
+        }
+        return result
     }
 
     var dynamicRangeDescription: String {
@@ -651,7 +676,7 @@ struct HLSVideoFormat: Equatable {
                 return HLSVideoFormat(codecs: String(format: "dvh1.05.%02d", dv.level),
                                       supplementalCodecs: nil,
                                       videoRange: .pq,
-                                      dolbyVisionProfile: "5",
+                                      dolbyVision: dv,
                                       isProbed: true)
             case 8:
                 // Profile 8 基础层可按 HDR10 / SDR / HLG 独立播放，杜比视界通过 SUPPLEMENTAL-CODECS 声明
@@ -675,7 +700,7 @@ struct HLSVideoFormat: Equatable {
                 return HLSVideoFormat(codecs: hevcCodec,
                                       supplementalCodecs: "\(dvCodec)/\(brand)",
                                       videoRange: finalRange,
-                                      dolbyVisionProfile: "8.\(dv.compatibilityID)",
+                                      dolbyVision: dv,
                                       isProbed: true)
             default:
                 break
@@ -686,7 +711,7 @@ struct HLSVideoFormat: Equatable {
         guard let baseRange = range ?? (dolbyVision != nil ? .pq : nil) else {
             return nil
         }
-        return HLSVideoFormat(codecs: baseCodec, supplementalCodecs: nil, videoRange: baseRange, dolbyVisionProfile: nil, isProbed: true)
+        return HLSVideoFormat(codecs: baseCodec, supplementalCodecs: nil, videoRange: baseRange, dolbyVision: nil, isProbed: true)
     }
 
     /// 初始化分段里没有 dvcC / dvvC，但接口标明是杜比视界时（B 站 126 常返回 hvc1.2.4.L150.90），
@@ -723,14 +748,14 @@ struct HLSVideoFormat: Equatable {
             let level = Int(parts[2]) ?? dolbyVisionLevel(width: width, height: height, frameRate: frameRate)
             if profile == 5 {
                 return HLSVideoFormat(codecs: String(format: "dvh1.05.%02d", level), supplementalCodecs: nil,
-                                      videoRange: .pq, dolbyVisionProfile: "5")
+                                      videoRange: .pq, dolbyVision: .init(profile: 5, level: level, compatibilityID: 0, hasEnhancementLayer: false))
             }
             if profile == 8 {
                 // dvh1.08.LL 中的 LL 是杜比视界 level 而不是 8.x 的兼容 ID；
                 // B 站的杜比视界为 Profile 8.4（HLG 基础层），无法解析时按此处理
                 return HLSVideoFormat(codecs: hevcBaseCodec(forDolbyVisionLevel: level),
                                       supplementalCodecs: String(format: "dvh1.08.%02d/db4h", level),
-                                      videoRange: .hlg, dolbyVisionProfile: "8.4")
+                                      videoRange: .hlg, dolbyVision: .init(profile: 8, level: level, compatibilityID: 4, hasEnhancementLayer: false))
             }
         }
 
@@ -739,13 +764,13 @@ struct HLSVideoFormat: Equatable {
             let level = dolbyVisionLevel(width: width, height: height, frameRate: frameRate)
             return HLSVideoFormat(codecs: "hvc1.2.4.\(parts[3]).B0",
                                   supplementalCodecs: String(format: "dvh1.08.%02d/db4h", level),
-                                  videoRange: .hlg, dolbyVisionProfile: "8.4")
+                                  videoRange: .hlg, dolbyVision: .init(profile: 8, level: level, compatibilityID: 4, hasEnhancementLayer: false))
         }
 
         if qn == Quality.hdr {
-            return HLSVideoFormat(codecs: codecs, supplementalCodecs: nil, videoRange: .pq, dolbyVisionProfile: nil)
+            return HLSVideoFormat(codecs: codecs, supplementalCodecs: nil, videoRange: .pq, dolbyVision: nil)
         }
-        return HLSVideoFormat(codecs: codecs, supplementalCodecs: nil, videoRange: .sdr, dolbyVisionProfile: nil)
+        return HLSVideoFormat(codecs: codecs, supplementalCodecs: nil, videoRange: .sdr, dolbyVision: nil)
     }
 
     /// hev1 / dvhe 在 HLS 中统一声明为 hvc1 / dvh1
