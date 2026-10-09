@@ -87,8 +87,19 @@ The `codecs` field in Bilibili's API is too coarse. It cannot tell PQ from HLG, 
 
 - Only HDR/DV candidates are probed (`needsProbe`), with a deadline. If probing fails, the format is inferred from the quality number (`qn`) and the codecs.
 - The probe downloads are cached, and the media playlists reuse them.
-- Do **not** filter streams by `eligibleForHDRPlayback`. When the Apple TV is set to SDR with Match Dynamic Range on, that flag is false before playback starts, so filtering would stop the TV from ever switching to HDR. AVPlayer picks the right stream by `VIDEO-RANGE` on its own.
+- HDR variants above 30fps are declared as `FRAME-RATE=30`, and their DV level as the 30fps level (`declaredAt30fps`). The Apple TV 4K (1st gen) skips HDR variants declared above 30fps, even after the TV has switched to HDR. Only the playlist declaration changes; the video still plays at its real frame rate.
+
+Switching the TV to HDR (`HDRDisplaySwitcher`):
+- **Why it exists.** Bilibili offers only one HDR quality, so every other variant in the playlist is SDR. AVPlayer chooses the dynamic range once, when the `AVPlayerItem` starts, based on the TV's current mode. With the Apple TV set to SDR and Match Dynamic Range on, it starts on an SDR variant. It never moves up to the HDR variant later, even after AVKit switches the TV to HDR.
+- **What it does.** `BVideoPlayPlugin` sets `AVDisplayManager.preferredDisplayCriteria` for the first HDR stream, waits for the mode switch to finish (about 3s), and only then creates the item. The criteria's format description is built from the stream's own `hvcC`/`dvcC`/`dvvC` boxes.
+- **AVKit's automatic matching.** HDR videos therefore turn off `appliesPreferredDisplayCriteriaAutomatically`. The criteria is reset when the player is dismissed, and when play-next moves on to a video that isn't HDR. SDR videos still use AVKit's automatic matching.
+- **Refresh rate.** The criteria's refresh rate is snapped to a standard rate such as 23.976, 59.94 or 60. Bilibili's `frame_rate` is an average (59.995, 62.5, …), and with a non-standard rate tvOS ignores the whole criteria, including the dynamic range.
+- **Keep both SDR and HDR variants.** Do not filter streams by `eligibleForHDRPlayback`. It doesn't predict which variant AVPlayer picks: it was already true on the test Apple TV while the TV was still in SDR.
+
+Debugging:
 - `DebugPlugin` shows the resolved format on screen.
+- These log lines show each step: `playurl accept quality` (what Bilibili offers), `[display]` (whether the TV switched, and how long it took), and `[player] playing variant` / `last variant` (which variant actually played, with dropped frames).
+- If no 125/126 stream comes back even with the quality setting at HDR/Dolby Vision and a 大会员 (VIP) login, check `accept quality`. If 125/126 are missing there too, Bilibili has no HDR version of that video, whatever its title says.
 
 ### Danmaku (bullet comments)
 Providers conform to `DanmuProviderProtocol` and publish `DanmakuTextCellModel`s through Combine. `VideoDanmuProvider` loads protobuf segments lazily, 6 minutes at a time, and handles filtering and duplicate removal. `DanmuViewPlugin` renders them with a **vendored and modified DanmakuKit** in `BilibiliLive/Vendor/`, not the SPM package.
