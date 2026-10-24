@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-An unofficial, non-commercial tvOS-only Bilibili client. It is a fork of `yichengchen/ATV-Bilibili-demo` with an Apple TV+ style redesign. It is built with UIKit and AVKit (no SwiftUI) as one app target, `BilibiliLive`. The deployment target is **tvOS 26.0**, and the code calls tvOS 26 APIs such as `UIGlassEffect`. The project uses Swift 5 language mode. UI strings, code comments and commit messages are mostly in Chinese. Commits use a conventional prefix with a Chinese summary, for example `fix: 杜比视界 ...`.
+An unofficial, non-commercial tvOS-only Bilibili client. It is a fork of `yichengchen/ATV-Bilibili-demo` with an Apple TV+ style redesign. It is built with UIKit and AVKit as one app target, `BilibiliLive`. The only SwiftUI is the banner at the top of the 关注 page (`Component/Banner/BannerView.swift`), which `FeedCollectionViewController` hosts in a `UIHostingController`. The deployment target is **tvOS 26.0**, and the code calls tvOS 26 APIs such as `UIGlassEffect`. The project uses Swift 5 language mode. UI strings, code comments and commit messages are mostly in Chinese. Commits use a conventional prefix with a Chinese summary, for example `fix: 杜比视界 ...`.
 
 A local, gitignored `.github/copilot-instructions.md` may exist with a longer overview, but some of it is out of date. It claims tvOS 15, format-on-build, and a `WebRequest.req` signing helper. Where it disagrees with this file, trust the code.
 
@@ -71,6 +71,7 @@ Plugin cleanup rules:
   - The view model resolves the `cid` if it is missing, then fetches playurl, player info and detail concurrently. Bangumi (anime and other licensed shows) goes through the PGC endpoints, with an optional HK/TW area-unlock retry.
   - `generatePlayerPlugin` then builds the plugin set. It always includes play, danmaku, speed, UPnP, debug and playlist. It adds clips, SponsorBlock and the danmaku mask based on settings and data.
   - "Play next" reloads the data and rebuilds the whole plugin set; `VideoPlayerViewController` calls `removeAllPlugins()` before adding the new set. Clips, SponsorBlock, the mask and the info plugin all depend on the video.
+  - When a video ends, `VideoPlayListPlugin` moves to the next item only if 连续播放 (`Settings.continouslyPlay`) is on. When there is no next item, or 连续播放 is off, 循环播放 (`Settings.loopPlay`) starts over; otherwise the player closes.
 - **Live streams:** `LivePlayerViewModel` uses `URLPlayPlugin` and `LiveDanMuProvider`. The provider reads live danmaku from a WebSocket feed with a custom binary header and brotli compression.
 
 ### DASH to HLS (how video plays)
@@ -102,7 +103,7 @@ Debugging:
 - If no 125/126 stream comes back even with the quality setting at HDR/Dolby Vision and a 大会员 (VIP) login, check `accept quality`. If 125/126 are missing there too, Bilibili has no HDR version of that video, whatever its title says.
 
 ### Danmaku (bullet comments)
-Providers conform to `DanmuProviderProtocol` and publish `DanmakuTextCellModel`s through Combine. `VideoDanmuProvider` loads protobuf segments lazily, 6 minutes at a time, and handles filtering and duplicate removal. `DanmuViewPlugin` renders them with a **vendored and modified DanmakuKit** in `BilibiliLive/Vendor/`, not the SPM package.
+Providers conform to `DanmuProviderProtocol` and publish `DanmakuTextCellModel`s through Combine. `VideoDanmuProvider` loads protobuf segments lazily, 6 minutes at a time, and handles filtering and duplicate removal. Its state lives on a private serial queue, because playback-time callbacks arrive on a global queue and segment downloads finish in background tasks. Read and write that state only on the queue. Play-next reuses the provider, so results whose `cid` no longer matches are dropped. `DanmuViewPlugin` renders them with a **vendored and modified DanmakuKit** in `BilibiliLive/Vendor/`, not the SPM package.
 
 The anti-occlusion mask keeps danmaku from covering people on screen:
 - `BMaskProvider` uses Bilibili's server-side mask data.
