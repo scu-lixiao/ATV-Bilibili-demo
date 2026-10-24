@@ -34,10 +34,15 @@ class VideoNextProvider {
         playSeq = seq
     }
 
+    /// 当前播放的是 playSeq[index]，序列第一项就是起播的视频
     private var index = 0
     private let playSeq: [PlayInfo]
+
+    var count: Int { playSeq.count }
+
+    /// 回到序列开头，下一次 getNext 返回第一项。原先重置为 0，循环时会跳过第一项
     func reset() {
-        index = 0
+        index = -1
     }
 
     func getNext() -> PlayInfo? {

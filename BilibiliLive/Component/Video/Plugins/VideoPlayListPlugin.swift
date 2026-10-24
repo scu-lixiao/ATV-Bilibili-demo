@@ -38,17 +38,24 @@ class VideoPlayListPlugin: NSObject, CommonPlayerPlugin {
     }
 
     func playerDidEnd(player: AVPlayer) {
-        if !playNext() {
-            if Settings.loopPlay {
-                nextProvider?.reset()
-                if !playNext() {
-                    player.currentItem?.seek(to: .zero, completionHandler: nil)
-                    player.play()
-                }
-                return
-            }
-            onPlayEnd?()
+        // 关闭连续播放时不切到下一个视频；此时开启循环播放只重播当前视频
+        let continouslyPlay = Settings.continouslyPlay
+        if continouslyPlay, playNext() {
+            return
         }
+        if Settings.loopPlay {
+            // 只有一项的序列就是当前视频，直接从头重播，不必重新加载
+            if continouslyPlay, let nextProvider, nextProvider.count > 1 {
+                nextProvider.reset()
+                if playNext() {
+                    return
+                }
+            }
+            player.currentItem?.seek(to: .zero, completionHandler: nil)
+            player.play()
+            return
+        }
+        onPlayEnd?()
     }
 
     private func playNext() -> Bool {

@@ -64,9 +64,6 @@ enum Settings {
     @UserDefault("Settings.vnMask", defaultValue: false)
     static var vnMask: Bool
 
-    @UserDefault("Settings.loadHighestVideoOnly", defaultValue: false)
-    static var loadHighestVideoOnly: Bool
-
     @UserDefault("Settings.contentMatch", defaultValue: true)
     static var contentMatch: Bool
 
@@ -105,9 +102,6 @@ enum Settings {
 
     @UserDefault("Settings.ui.sideMenuAutoSelectChange", defaultValue: false)
     static var sideMenuAutoSelectChange: Bool
-
-    @UserDefault("Settings.showCover", defaultValue: false)
-    static var showCover: Bool
 
     @UserDefaultCodable("Settings.SponsorBlockType", defaultValue: SponsorBlockType.none)
     static var enableSponsorBlock: SponsorBlockType
