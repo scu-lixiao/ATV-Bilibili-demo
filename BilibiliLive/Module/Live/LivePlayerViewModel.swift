@@ -143,15 +143,17 @@ class LivePlayerViewModel {
             }
         }
 
-        allPlayInfos.sort { a, b in
-            return a.current_qn ?? 0 > b.current_qn ?? 0
-        }
+        // fmp4 优先，同一格式内按画质从高到低，画质相同时保持接口返回的线路顺序（offset 保证稳定）。
+        // 原先分两次 sort，第二次的比较 `a.formate == "fmp4"` 不是严格弱序，会打乱第一次按画质排好的顺序
+        allPlayInfos = allPlayInfos.enumerated()
+            .sorted { a, b in
+                let lhs = (a.element.formate == "fmp4" ? 0 : 1, -(a.element.current_qn ?? 0), a.offset)
+                let rhs = (b.element.formate == "fmp4" ? 0 : 1, -(b.element.current_qn ?? 0), b.offset)
+                return lhs < rhs
+            }
+            .map(\.element)
 
-        allPlayInfos.sort { a, b in
-            return a.formate == "fmp4"
-        }
-
-        Logger.debug("all info arry:\(playInfos)")
+        Logger.debug("all info arry:\(allPlayInfos)")
         playInfos = allPlayInfos
         try await playFirstInfo()
     }
@@ -214,7 +216,7 @@ extension WebRequest {
     }
 
     static func requestLiveRoomInit(roomID: Int) async throws -> LiveRoomInit {
-        return try await request(url: EndPoint.liveRoomInfo, parameters: ["id": roomID])
+        return try await request(url: EndPoint.liveRoomInit, parameters: ["id": roomID])
     }
 
     static func requestLiveStreams(roomID: Int) async throws -> [LiveStream] {
