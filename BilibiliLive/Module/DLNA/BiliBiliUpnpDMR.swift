@@ -115,15 +115,18 @@ class BiliBiliUpnpDMR: NSObject {
             return HttpResponse.internalServerError(nil)
         }
 
-        httpServer["/debug/log"] = {
-            req in
-            if let path = Logger.latestLogPath(),
-               let str = try? String(contentsOf: URL(fileURLWithPath: path))
-            {
-                return HttpResponse.ok(.text(str))
+        // 投屏 HTTP 服务对整个局域网开放且没有鉴权，日志里有观看记录等信息，只在 Debug 构建中提供
+        #if DEBUG
+            httpServer["/debug/log"] = {
+                req in
+                if let path = Logger.latestLogPath(),
+                   let str = try? String(contentsOf: URL(fileURLWithPath: path))
+                {
+                    return HttpResponse.ok(.text(str))
+                }
+                return HttpResponse.internalServerError(nil)
             }
-            return HttpResponse.internalServerError(nil)
-        }
+        #endif
     }
 
     func stop() {
