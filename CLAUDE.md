@@ -112,6 +112,8 @@ The anti-occlusion mask keeps danmaku from covering people on screen:
 ### Casting (`Module/DLNA/`)
 `BiliBiliUpnpDMR` implements Bilibili's "云视听小电视" cast target (TV casting from the phone app). It combines SSDP discovery, DLNA description XMLs served over HTTP, and the proprietary NVA socket protocol. The player reports video switches to it (`sendVideoSwitch`), and `BUpnpPlugin` reports playback state.
 
+Its HTTP server on port 9958 is open to the whole LAN with no authentication, because the phone app has to reach it. Don't add routes that expose user data there. The `/debug/log` route, which serves the app log, is registered only in Debug builds.
+
 ### Settings
 Settings are static properties on the `Settings` enum in `Component/Settings.swift`, declared with `@UserDefault` or `@UserDefaultCodable("Settings.xxx", defaultValue:)`. Settings that other code must observe live on `Defaults.shared` and use the `@Published(key:)` extension, which also saves to UserDefaults.
 
