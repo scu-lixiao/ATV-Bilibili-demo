@@ -157,6 +157,7 @@ class VideoPlayerViewModel {
         let danmu = DanmuViewPlugin(provider: danmuProvider)
         let upnp = BUpnpPlugin(duration: data.detail?.View.duration)
         let debug = DebugPlugin()
+        debug.additionDebugInfo = { [weak playPlugin] in playPlugin?.networkDebugInfo ?? "" }
         let playSpeed = SpeedChangerPlugin()
         playSpeed.$currentPlaySpeed.sink { [weak danmu] speed in
             danmu?.danMuView.playingSpeed = speed.value

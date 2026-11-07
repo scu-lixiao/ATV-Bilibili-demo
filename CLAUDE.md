@@ -80,6 +80,9 @@ Bilibili serves DASH, but AVPlayer only plays HLS. `BVideoPlayPlugin` bridges th
 - **Master playlist:** one `EXT-X-STREAM-INF` per video stream per CDN URL, the audio renditions (including Dolby and FLAC when lossless audio is on), the subtitles and an I-frame stream.
 - **Media playlists** (`atv://dash/<n>`): byte-range segments built from each stream's `sidx` box. `SidxDownloader` in `BilibiliVideoResourceLoaderDelegate.swift` fetches the box, and `SidxParseUtil` parses it. The playlist uses whichever CDN URL successfully served the sidx, so an unreachable PCDN node falls back to a backup URL.
 - **Subtitles** (`atv://subtitle/`): converted to WebVTT and served from a local Swifter HTTP server through a 302 redirect.
+- **Multi-CDN acceleration** (`Settings.multiCDNEnabled`, 多 CDN 并发加速, off by default, ported from upstream #222): media playlists point at `http://127.0.0.1:<port>/media/<id>` on the same Swifter server instead of the CDN URL. `MediaRangeDownloader` (an actor, one per DASH stream) splits each byte range across the stream's CDN URLs, hedges slow requests, checks every new CDN against the sidx bytes before splicing its data in, and streams the bytes back in order (`MediaRangeTransport.swift` has the Range parsing). The server listens on loopback only.
+  - `BVideoPlayPlugin` snapshots the setting when it creates the player. If an accelerated item fails, or waits for buffer for 20s (a broken proxy makes AVPlayer buffer forever instead of failing), it rebuilds the player once in direct mode at the current position.
+  - The Debug overlay shows the downloader stats as a `[cdn] accel …` line.
 
 ### HDR and Dolby Vision
 The `codecs` field in Bilibili's API is too coarse. It cannot tell PQ from HLG, and it omits the Dolby Vision base-layer compatibility ID.

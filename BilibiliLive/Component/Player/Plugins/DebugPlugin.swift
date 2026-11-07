@@ -151,7 +151,7 @@ class DebugPlugin: NSObject, CommonPlayerPlugin {
         indicatedAverageBitrate:\(bitrateStr(indicatedBitrate))
         """
 
-        if let additionDebugInfo = additionDebugInfo?() {
+        if let additionDebugInfo = additionDebugInfo?(), !additionDebugInfo.isEmpty {
             logs = additionDebugInfo + "\n" + logs
         }
         if customInfo.isEmpty == false {

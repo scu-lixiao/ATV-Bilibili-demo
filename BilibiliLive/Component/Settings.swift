@@ -58,6 +58,10 @@ enum Settings {
     @UserDefault("Settings.preferAvc", defaultValue: false)
     static var preferAvc: Bool
 
+    /// 点播分片经本地代理从多个 CDN 并发下载（实验性，默认关闭）
+    @UserDefault("Settings.multiCDNEnabled", defaultValue: false)
+    static var multiCDNEnabled: Bool
+
     @UserDefault("Settings.danmuMask", defaultValue: true)
     static var danmuMask: Bool
 
