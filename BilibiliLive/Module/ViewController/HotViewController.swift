@@ -12,6 +12,10 @@ class HotViewController: StandardVideoCollectionViewController<VideoDetail.Info>
         super.setupCollectionView()
     }
 
+    override func supportVideoQuickActions() -> Bool {
+        return true
+    }
+
     override func request(page: Int) async throws -> [VideoDetail.Info] {
         collectionVC.headerText = "热门视频"
         return try await WebRequest.requestHotVideo(page: page).list
