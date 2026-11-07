@@ -627,23 +627,40 @@ private extension BilibiliVideoResourceLoaderDelegate {
             }
             // 在 Swifter 的连接队列上同步排空；任何一步失败都取消下载并截断连接，
             // 已发出 206 无法改状态码，由 AVPlayer 重试或 BVideoPlayPlugin 回退直连
+            let start = Date()
+            var firstByteDelay: TimeInterval?
+            var written = 0
             do {
                 while let chunk = try pipe.readSync(maxLength: 64 * 1024, timeout: 30) {
+                    if firstByteDelay == nil {
+                        firstByteDelay = Date().timeIntervalSince(start)
+                    }
                     try writer.write(chunk)
+                    written += chunk.count
                 }
             } catch {
                 streamTask.cancel()
-                Logger.debug("[cdn] proxy range \(range.start)-\(range.end) aborted: \(error)")
+                Logger.debug("[cdn] proxy range \(range.start)-\(range.end) aborted after \(written / 1024)KB in \(Self.elapsedText(since: start)): \(error)")
                 throw error
             }
+            let elapsed = Date().timeIntervalSince(start)
             Task { [weak self] in
                 if let total = await downloader.knownTotal() {
                     registry.updateTotalLength(total, forID: mediaID)
                 }
                 let text = await Self.accelerationText(downloader: downloader)
                 self?.updateAccelerationText(text)
+                // 每个 AVPlayer 请求一条：首字节延迟与该请求的实际交付速度，用于判断加速是否有效
+                let stats = String(format: "%lldKB first byte %.0fms, %.2fs, %.1fMbps",
+                                   range.length / 1024, (firstByteDelay ?? 0) * 1000, elapsed,
+                                   Double(range.length) * 8 / max(elapsed, 0.001) / 1_000_000)
+                Logger.debug("[cdn] proxy range \(stats) | \(text)")
             }
         }
+    }
+
+    static func elapsedText(since start: Date) -> String {
+        String(format: "%.2fs", Date().timeIntervalSince(start))
     }
 
     static func accelerationText(downloader: MediaRangeDownloader) async -> String {

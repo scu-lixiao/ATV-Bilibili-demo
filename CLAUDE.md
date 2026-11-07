@@ -82,7 +82,8 @@ Bilibili serves DASH, but AVPlayer only plays HLS. `BVideoPlayPlugin` bridges th
 - **Subtitles** (`atv://subtitle/`): converted to WebVTT and served from a local Swifter HTTP server through a 302 redirect.
 - **Multi-CDN acceleration** (`Settings.multiCDNEnabled`, 多 CDN 并发加速, off by default, ported from upstream #222): media playlists point at `http://127.0.0.1:<port>/media/<id>` on the same Swifter server instead of the CDN URL. `MediaRangeDownloader` (an actor, one per DASH stream) splits each byte range across the stream's CDN URLs, hedges slow requests, checks every new CDN against the sidx bytes before splicing its data in, and streams the bytes back in order (`MediaRangeTransport.swift` has the Range parsing). The server listens on loopback only.
   - `BVideoPlayPlugin` snapshots the setting when it creates the player. If an accelerated item fails, or waits for buffer for 20s (a broken proxy makes AVPlayer buffer forever instead of failing), it rebuilds the player once in direct mode at the current position.
-  - The Debug overlay shows the downloader stats as a `[cdn] accel …` line.
+  - The Debug overlay shows the downloader stats as a `[cdn] accel …` line. Debug builds also log one `[cdn] proxy range` line per AVPlayer request, with its first-byte delay and Mbps.
+  - Response bodies are read in chunks by `MediaRangeFetcher` (a `URLSessionDataDelegate`). Don't iterate `URLSession.AsyncBytes` byte by byte, as upstream does: on an M-series Mac that capped a 3-CDN download at about 30 Mbps, and with it 4K HDR buffered and stalled on the Apple TV. Caller cancellations (AVPlayer dropping a connection) leave the downloader's adaptive concurrency unchanged.
 
 ### HDR and Dolby Vision
 The `codecs` field in Bilibili's API is too coarse. It cannot tell PQ from HLG, and it omits the Dolby Vision base-layer compatibility ID.

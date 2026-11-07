@@ -278,7 +278,7 @@ actor MediaRangeDownloader {
     /// 锚点过期标记：一旦确认过期则永久丢弃，转双边采样。
     private var anchorDiscarded = false
 
-    private var session: URLSession?
+    private var fetcher: MediaRangeFetcher?
 
     init(candidates: [String], referer: String, userAgent: String = Keys.userAgent, mode: MediaTransportMode = .accelerated) {
         self.candidates = candidates
@@ -288,7 +288,7 @@ actor MediaRangeDownloader {
     }
 
     deinit {
-        session?.invalidateAndCancel()
+        fetcher?.invalidate()
     }
 
     // MARK: 对外接口
@@ -536,7 +536,8 @@ actor MediaRangeDownloader {
             adjustConcurrencyAfterStream(failuresBefore: failuresBefore, hedgesBefore: hedgesBefore, succeeded: true)
             pipe.close()
         } catch is CancellationError {
-            adjustConcurrencyAfterStream(failuresBefore: failuresBefore, hedgesBefore: hedgesBefore, succeeded: false)
+            // 取消来自调用方（AVPlayer 断开连接、拖动进度等），与 CDN 表现无关，不调整并发上限。
+            // 上游在这里减半：AVPlayer 嫌慢主动断开 → 并发减半 → 更慢 → 再断开，形成恶性循环
             pipe.fail(MediaRangeError.cancelled)
         } catch {
             // 失败计数已在成因处恰好记一次（recordFailure/isolateHosts/等价性验证），
@@ -968,7 +969,6 @@ actor MediaRangeDownloader {
             Task { await MediaDownloadBudget.shared.release(permit) }
         }
 
-        let session = ensureSession()
         var request = URLRequest(url: URL(string: urlString)!)
         request.httpMethod = "GET"
         request.setValue("bytes=\(subrange.start)-\(subrange.end)", forHTTPHeaderField: "Range")
@@ -976,50 +976,44 @@ actor MediaRangeDownloader {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 15
 
-        let startDate = Date()
-        let (asyncBytes, response): (URLSession.AsyncBytes, URLResponse)
+        let response: MediaRangeFetcher.Response
         do {
-            (asyncBytes, response) = try await session.bytes(for: request)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch {
-            recordFailure(host: host, category: classify(error: error, status: nil))
-            throw error
-        }
-        // TTFB：首字节（响应头）到达耗时
-        let ttfb = Date().timeIntervalSince(startDate)
-        guard let http = response as? HTTPURLResponse else {
-            recordFailure(host: host, category: .network(NSError(domain: "cdn", code: -1)))
-            throw MediaRangeError.upstream(status: -1)
-        }
-        // 取消不计入失败：调用方已取消时直接退出
-        if Task.isCancelled {
-            throw CancellationError()
-        }
-        guard http.statusCode == 206 else {
-            recordFailure(host: host, category: classify(error: nil, status: http.statusCode))
-            if http.statusCode == 403 || http.statusCode == 404 || http.statusCode == 416 {
-                // 403/404/416 分类，避免无限重复同一无效候选
-                isolateSingle(host: host)
+            response = try await ensureFetcher().fetch(request, range: subrange)
+        } catch let failure as MediaRangeFetcher.Failure {
+            switch failure {
+            case let .cancelled(received):
+                // 被取消前已传输的字节计入 extra（上游流量真实发生但未交付），取消本身不计入 CDN 失败
+                addExtra(Int64(received))
+                throw CancellationError()
+            case let .transport(error):
+                recordFailure(host: host, category: classify(error: error, status: nil))
+                throw error
+            case let .status(code):
+                recordFailure(host: host, category: classify(error: nil, status: code))
+                if code == 403 || code == 404 || code == 416 {
+                    // 403/404/416 分类，避免无限重复同一无效候选
+                    isolateSingle(host: host)
+                }
+                throw MediaRangeError.upstream(status: code)
+            case let .contentRange(rangeMismatch):
+                // 200 / 缺失 Content-Range / 区间不符：拒绝不正确响应，不交付
+                recordFailure(host: host, category: .mismatch)
+                if rangeMismatch {
+                    isolateSingle(host: host)
+                }
+                throw MediaRangeError.mismatch
+            case let .overflow(received):
+                addExtra(Int64(received))
+                recordFailure(host: host, category: .mismatch)
+                throw MediaRangeError.mismatch
+            case let .truncated(received):
+                // 传输中断前已读取的部分同样计入 extra（未交付的上游流量）
+                addExtra(Int64(received))
+                recordFailure(host: host, category: .truncated)
+                throw MediaRangeError.truncated
             }
-            throw MediaRangeError.upstream(status: http.statusCode)
         }
-        // Content-Range 校验
-        guard let contentRangeValue = http.value(forHTTPHeaderField: "Content-Range"),
-              let parsed = MediaRangeParsing.parseContentRange(contentRangeValue)
-        else {
-            // 200 或缺失 Content-Range：拒绝不正确响应，不交付
-            recordFailure(host: host, category: .mismatch)
-            throw MediaRangeError.mismatch
-        }
-        guard parsed.range == subrange else {
-            recordFailure(host: host, category: .mismatch)
-            isolateSingle(host: host)
-            throw MediaRangeError.mismatch
-        }
-        if let total = parsed.total {
+        if let total = response.totalLength {
             if let known = knownTotalLength, known != total {
                 recordFailure(host: host, category: .mismatch)
                 isolateSingle(host: host)
@@ -1032,46 +1026,8 @@ actor MediaRangeDownloader {
                 throw MediaRangeError.unsatisfiable(total: total)
             }
         }
-        // 逐字节读取，测量有效吞吐；重复下载字节不计入有效吞吐由上层 extraBytes 区分
-        var data = Data()
-        data.reserveCapacity(Int(subrange.length))
-        do {
-            for try await byte in asyncBytes {
-                data.append(byte)
-                if Task.isCancelled {
-                    throw CancellationError()
-                }
-                // 背压：单个子区间在内存中完整组装（已受 subrangeMaxBytes 与
-                // singleRequestMemoryCap 约束），此处不做额外限流
-                if Int64(data.count) > subrange.length {
-                    recordFailure(host: host, category: .mismatch)
-                    throw MediaRangeError.mismatch
-                }
-            }
-        } catch is CancellationError {
-            // 被取消前已传输的字节计入 extra（上游流量真实发生但未交付），
-            // 保证诊断的冗余比例可信；取消本身不计入 CDN 健康失败。
-            addExtra(Int64(data.count))
-            throw CancellationError()
-        } catch {
-            // 传输中断前已读取的部分同样计入 extra（未交付的上游流量）
-            addExtra(Int64(data.count))
-            // 竞速落选等取消发生在读取响应体期间时，AsyncBytes 抛出的是 URLError.cancelled
-            // 而不是 CancellationError：同样按取消处理，不计入该 CDN 的失败
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
-                throw CancellationError()
-            }
-            recordFailure(host: host, category: .truncated)
-            throw MediaRangeError.truncated
-        }
-        // 实际数据长度校验
-        guard Int64(data.count) == subrange.length else {
-            recordFailure(host: host, category: .truncated)
-            throw MediaRangeError.truncated
-        }
-        let transferTime = Date().timeIntervalSince(startDate)
-        recordSuccess(host: host, bytes: Int64(data.count), ttfb: ttfb, transferTime: transferTime)
-        return data
+        recordSuccess(host: host, bytes: Int64(response.data.count), ttfb: response.ttfb, transferTime: response.transferTime)
+        return response.data
     }
 
     /// 有界等待预算许可。超时不再无许可通行，而是抛 budgetExhausted，
@@ -1091,15 +1047,11 @@ actor MediaRangeDownloader {
         }
     }
 
-    private func ensureSession() -> URLSession {
-        if let session { return session }
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
-        config.httpMaximumConnectionsPerHost = 4
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        let created = URLSession(configuration: config)
-        session = created
+    /// 按需创建：每个清晰度/编码都有一个下载器，但通常只有正在播放的那一路会发请求
+    private func ensureFetcher() -> MediaRangeFetcher {
+        if let fetcher { return fetcher }
+        let created = MediaRangeFetcher()
+        fetcher = created
         return created
     }
 
@@ -1155,5 +1107,166 @@ actor MediaRangeDownloader {
         }
         if error is CancellationError { return .cancelled }
         return .network(error ?? NSError(domain: "cdn", code: -1))
+    }
+}
+
+// MARK: - 按数据块接收的 Range 请求（本项目改动）
+
+/// 上游用 `for try await byte in URLSession.AsyncBytes` 逐字节读取响应体，且都在下载器 actor 上串行执行。
+/// Mac 上实测逐字节读取只有约 110–150 Mbps（Debug/Release 相近），同一媒体的所有并发子区间共享这一上限，
+/// Apple TV 4K（A10X）上不足以支撑 4K HDR 码率，表现为缓冲慢、卡顿。
+/// 这里改用 URLSessionDataDelegate 按数据块接收（同样数据快约两个数量级），
+/// 响应头到达时即校验状态码与 Content-Range，不符立即取消，不会把整文件下载下来。
+final class MediaRangeFetcher: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    struct Response {
+        let data: Data
+        /// 响应头到达耗时
+        let ttfb: TimeInterval
+        let transferTime: TimeInterval
+        let totalLength: Int64?
+    }
+
+    enum Failure: Error {
+        /// 未收到响应头
+        case transport(Error)
+        /// 非 206
+        case status(Int)
+        /// Content-Range 缺失或无法解析（false），或与请求区间不符（true）
+        case contentRange(rangeMismatch: Bool)
+        /// 响应体超过请求长度
+        case overflow(received: Int)
+        /// 响应体传输中断，或结束时长度不足
+        case truncated(received: Int)
+        /// 调用方取消
+        case cancelled(received: Int)
+    }
+
+    private final class Transfer {
+        let range: MediaByteRange
+        let start = Date()
+        var ttfb: TimeInterval = 0
+        var totalLength: Int64?
+        var data = Data()
+        var receivedResponse = false
+        var failure: Failure?
+        var continuation: CheckedContinuation<Response, Error>?
+
+        init(range: MediaByteRange) {
+            self.range = range
+        }
+    }
+
+    private let lock = NSLock()
+    private var transfers = [Int: Transfer]()
+    private var session: URLSession!
+
+    override init() {
+        super.init()
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.httpMaximumConnectionsPerHost = 4
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInitiated
+        session = URLSession(configuration: config, delegate: self, delegateQueue: queue)
+    }
+
+    /// 取消在途请求，并解除 session 对 delegate 的强引用
+    func invalidate() {
+        session.invalidateAndCancel()
+    }
+
+    func fetch(_ request: URLRequest, range: MediaByteRange) async throws -> Response {
+        let task = session.dataTask(with: request)
+        let transfer = Transfer(range: range)
+        transfer.data.reserveCapacity(Int(range.length))
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.withLock {
+                    transfer.continuation = continuation
+                    transfers[task.taskIdentifier] = transfer
+                }
+                task.resume()
+                // 登记前就已取消时 onCancel 已经执行过，这里补一次
+                if Task.isCancelled {
+                    task.cancel()
+                }
+            }
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    func urlSession(_: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void)
+    {
+        let disposition: URLSession.ResponseDisposition = lock.withLock {
+            guard let transfer = transfers[dataTask.taskIdentifier] else { return .cancel }
+            transfer.receivedResponse = true
+            transfer.ttfb = Date().timeIntervalSince(transfer.start)
+            guard let http = response as? HTTPURLResponse else {
+                transfer.failure = .status(-1)
+                return .cancel
+            }
+            guard http.statusCode == 206 else {
+                transfer.failure = .status(http.statusCode)
+                return .cancel
+            }
+            guard let value = http.value(forHTTPHeaderField: "Content-Range"),
+                  let parsed = MediaRangeParsing.parseContentRange(value)
+            else {
+                transfer.failure = .contentRange(rangeMismatch: false)
+                return .cancel
+            }
+            guard parsed.range == transfer.range else {
+                transfer.failure = .contentRange(rangeMismatch: true)
+                return .cancel
+            }
+            transfer.totalLength = parsed.total
+            return .allow
+        }
+        completionHandler(disposition)
+    }
+
+    func urlSession(_: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        let overflow: Bool = lock.withLock {
+            guard let transfer = transfers[dataTask.taskIdentifier], transfer.failure == nil else { return false }
+            transfer.data.append(data)
+            guard Int64(transfer.data.count) <= transfer.range.length else {
+                transfer.failure = .overflow(received: transfer.data.count)
+                return true
+            }
+            return false
+        }
+        if overflow {
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let transfer = lock.withLock({ transfers.removeValue(forKey: task.taskIdentifier) }),
+              let continuation = transfer.continuation
+        else { return }
+        let received = transfer.data.count
+        if let failure = transfer.failure {
+            continuation.resume(throwing: failure)
+        } else if let error {
+            if (error as? URLError)?.code == .cancelled {
+                continuation.resume(throwing: Failure.cancelled(received: received))
+            } else if !transfer.receivedResponse {
+                continuation.resume(throwing: Failure.transport(error))
+            } else {
+                continuation.resume(throwing: Failure.truncated(received: received))
+            }
+        } else if Int64(received) != transfer.range.length {
+            continuation.resume(throwing: Failure.truncated(received: received))
+        } else {
+            continuation.resume(returning: Response(data: transfer.data,
+                                                    ttfb: transfer.ttfb,
+                                                    transferTime: Date().timeIntervalSince(transfer.start),
+                                                    totalLength: transfer.totalLength))
+        }
     }
 }
