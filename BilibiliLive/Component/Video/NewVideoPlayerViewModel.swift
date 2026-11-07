@@ -37,9 +37,16 @@ class VideoPlayerViewModel {
                                                    enableDanmuRemoveDup: Settings.enableDanmuRemoveDup)
     private var videoDetail: VideoDetail?
     private var cancellable = Set<AnyCancellable>()
+    private var danmuLoadTask: Task<Void, Never>?
 
     init(playInfo: PlayInfo) {
         self.playInfo = playInfo
+    }
+
+    /// 详情页已经请求过 VideoDetail，起播时直接复用，省掉一次请求。需在 load() 之前设置
+    func useInitialVideoDetail(_ detail: VideoDetail?) {
+        guard let detail, detail.View.aid == playInfo.aid else { return }
+        videoDetail = detail
     }
 
     func load() async {
@@ -55,7 +62,14 @@ class VideoPlayerViewModel {
     private func loadVideoInfo() async throws -> PlayerDetailData {
         try await initPlayInfo()
         let data = try await fetchVideoData()
-        await danmuProvider.initVideo(cid: data.cid, startPos: data.playerStartPos ?? 0)
+        // 起播不等待首段弹幕：先重置弹幕状态，下载放到后台，媒体准备与弹幕请求并行
+        let cid = data.cid
+        let startPos = data.playerStartPos ?? 0
+        danmuLoadTask?.cancel()
+        danmuProvider.prepareVideo(cid: cid, startPos: startPos)
+        danmuLoadTask = Task { [danmuProvider] in
+            await danmuProvider.loadInitialDanmu(cid: cid, startPos: startPos)
+        }
         return data
     }
 
@@ -67,9 +81,10 @@ class VideoPlayerViewModel {
     }
 
     private func updateVideoDetailIfNeeded() async {
-        if videoDetail == nil {
-            videoDetail = try? await WebRequest.requestDetailVideo(aid: playInfo.aid)
-        }
+        // 只复用同一个视频的详情：连播切到其他视频（稍后再看、收藏夹等列表）时必须重新请求，
+        // 否则标题、空降助手的 bvid、投屏时长都会沿用上一个视频
+        guard videoDetail?.View.aid != playInfo.aid else { return }
+        videoDetail = try? await WebRequest.requestDetailVideo(aid: playInfo.aid)
     }
 
     private func fetchVideoData() async throws -> PlayerDetailData {

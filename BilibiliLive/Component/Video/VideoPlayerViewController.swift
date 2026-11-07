@@ -55,7 +55,11 @@ class VideoNextProvider {
 }
 
 class VideoPlayerViewController: CommonPlayerViewController {
-    var data: VideoDetail?
+    /// 详情页传入的视频详情，交给 viewModel 复用（需在显示播放器之前设置）
+    var data: VideoDetail? {
+        didSet { viewModel.useInitialVideoDetail(data) }
+    }
+
     var nextProvider: VideoNextProvider?
 
     init(playInfo: PlayInfo) {

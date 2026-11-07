@@ -71,9 +71,11 @@ class VideoDanmuProvider: DanmuProviderProtocol, @unchecked Sendable {
         self.enableDanmuRemoveDup = enableDanmuRemoveDup
     }
 
-    func initVideo(cid id: Int, startPos: Int) async {
+    /// 切换到新视频：重置弹幕状态，并预先占住起播位置所在的分段，
+    /// 这样首段还在下载时到来的播放进度回调不会重复请求同一分段
+    func prepareVideo(cid id: Int, startPos: Int) {
         let segmentIdx = getSegmentIdx(time: TimeInterval(startPos))
-        // 串行队列先进先出：重置一定排在本次下载结果写入之前
+        // 串行队列先进先出：重置一定排在本次下载结果写入、以及之后的进度回调之前
         queue.async { [self] in
             cid = id
             upDanmus.removeAll()
@@ -85,7 +87,12 @@ class VideoDanmuProvider: DanmuProviderProtocol, @unchecked Sendable {
             danmuIdx = 0
             segmentStatuses[segmentIdx] = true
         }
+    }
 
+    /// 下载 UP 主弹幕与起播位置所在分段。起播不等待它完成，弹幕到达后按当前播放进度开始显示
+    func loadInitialDanmu(cid id: Int, startPos: Int) async {
+        guard !Task.isCancelled else { return }
+        let segmentIdx = getSegmentIdx(time: TimeInterval(startPos))
         async let view: () = fetchDanmuView(cid: id)
         async let list: () = fetchDanmuList(cid: id, idx: segmentIdx)
         await view
@@ -109,6 +116,9 @@ class VideoDanmuProvider: DanmuProviderProtocol, @unchecked Sendable {
             // 连播已切到下一个视频时丢弃上一个视频的结果
             guard self.cid == cid else { return }
             upDanmus = dms
+            // 起播不再等待弹幕，到达时可能已经播放了一段：从当前进度开始，避免把之前的 UP 主弹幕一次性全部弹出
+            // （进度 t 时已发出的是 time < t 的弹幕）
+            upDanmuIdx = dms.firstIndex(where: { $0.time >= lastTime }) ?? dms.count
         }
 
         Logger.debug("[dm] cid:\(cid) up danmu cnt: \(dms.count)")
