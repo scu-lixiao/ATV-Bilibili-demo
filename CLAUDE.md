@@ -68,7 +68,7 @@ Plugin cleanup rules:
 - Dismissing the player (unless Picture in Picture is running) pauses and releases the `AVPlayer` and removes every plugin.
 
 - **On-demand video:** `VideoPlayerViewController(playInfo:)` owns a `VideoPlayerViewModel`, which is defined in `NewVideoPlayerViewModel.swift`.
-  - The view model resolves the `cid` if it is missing, then fetches playurl, player info and detail concurrently. Bangumi (anime and other licensed shows) goes through the PGC endpoints, with an optional HK/TW area-unlock retry.
+  - The view model resolves the `cid` if it is missing, then fetches playurl and player info concurrently. It reuses the video detail the detail page already loaded (`useInitialVideoDetail`) when the `aid` matches, and otherwise fetches it alongside them; the `aid` check keeps play-next from carrying over the previous video's title, SponsorBlock `bvid` and cast duration. Bangumi (anime and other licensed shows) goes through the PGC endpoints, with an optional HK/TW area-unlock retry.
   - `generatePlayerPlugin` then builds the plugin set. It always includes play, danmaku, speed, UPnP, debug and playlist. It adds clips, SponsorBlock and the danmaku mask based on settings and data.
   - "Play next" reloads the data and rebuilds the whole plugin set; `VideoPlayerViewController` calls `removeAllPlugins()` before adding the new set. Clips, SponsorBlock, the mask and the info plugin all depend on the video.
   - When a video ends, `VideoPlayListPlugin` moves to the next item only if 连续播放 (`Settings.continouslyPlay`) is on. When there is no next item, or 连续播放 is off, 循环播放 (`Settings.loopPlay`) starts over; otherwise the player closes.
